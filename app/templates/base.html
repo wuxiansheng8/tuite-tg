@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tuite TG</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  </head>
+  <body>
+    <div class="app-layout">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">TG</div>
+          <div>
+            <strong>Tuite TG</strong>
+            <span>RSSHub Monitor</span>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="主菜单">
+          <a class="active" href="#dashboard" data-title="系统运行看板" data-subtitle="RSSHub 轮询、健康检测与 Telegram 推送后台"><span>▣</span>运行看板</a>
+          <a href="#rsshub" data-title="RSSHub 方案" data-subtitle="配置 RSSHub 容器，并选择每个 List 使用哪个容器抓取"><span>◎</span>RSSHub方案</a>
+          <a href="#monitor-list" data-panels="lists,aliases" data-title="监控名单" data-subtitle="统一配置监控 List 和用户备注，命中后推送到 Telegram"><span>☷</span>监控名单</a>
+          <a href="#proxies" data-title="代理设置" data-subtitle="统一维护代理池，RSSHub 容器只能选择已配置代理"><span>⇄</span>代理设置</a>
+          <a href="#settings" data-title="系统设置" data-subtitle="配置 Telegram、轮询频率和通知扩展"><span>⚙</span>系统设置</a>
+          <a href="#logs" data-title="运行日志" data-subtitle="查看最近事件、抓取异常、恢复结果和推送状态"><span>≡</span>运行日志</a>
+        </nav>
+
+        <div class="side-footer">
+          <span>系统状态</span>
+          <strong><i></i> 已连接</strong>
+          <form method="post" action="/logout" data-confirm="确认退出登录吗？">
+            <button type="submit" class="link-danger">退出登录</button>
+          </form>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="page-top">
+          <div>
+            <h1>{% block page_title %}系统运行看板{% endblock %}</h1>
+            <p>{% block page_subtitle %}RSSHub 轮询、健康检测与 Telegram 推送后台{% endblock %}</p>
+          </div>
+          <nav class="top-actions">
+            <form method="post" action="/monitor/trigger">
+              <button type="submit" class="secondary">手动轮询</button>
+            </form>
+            <a class="button-link" href="/data/export">导出数据</a>
+            <button type="button" class="secondary" data-open-import>导入数据</button>
+            <form method="post" action="/logout" data-confirm="确认退出登录吗？">
+              <button type="submit" class="ghost">退出</button>
+            </form>
+          </nav>
+        </header>
+        <div class="content-shell">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="import-modal" hidden>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="import-title">
+        <div class="modal-head">
+          <div>
+            <h2 id="import-title">导入数据</h2>
+            <p>会覆盖 RSSHub、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
+          </div>
+          <button type="button" class="ghost" data-close-import>关闭</button>
+        </div>
+        <form class="import-form" method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？RSSHub、List、用户备注、系统配置和去重记录都会被替换。">
+          <label>备份文件
+            <input name="backup_file" type="file" accept="application/json,.json" required>
+          </label>
+          <label>确认导入
+            <input name="confirm_text" placeholder="输入 导入 后执行覆盖" required>
+          </label>
+          <div class="actions">
+            <button type="submit" class="danger">导入并覆盖</button>
+            <button type="button" class="secondary" data-close-import>取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("submit", function (event) {
+        const form = event.target.closest("form[data-confirm]");
+        if (!form) {
+          return;
+        }
+        const message = form.dataset.confirm || "确认执行这个操作吗？";
+        if (!window.confirm(message)) {
+          event.preventDefault();
+        }
+      });
+
+      document.addEventListener("submit", function (event) {
+        const form = event.target.closest("form[data-pending-text]");
+        if (!form) {
+          return;
+        }
+        const button = form.querySelector("button[type='submit']");
+        if (!button) {
+          return;
+        }
+        button.dataset.originalText = button.textContent;
+        button.textContent = form.dataset.pendingText || "提交中...";
+        button.disabled = true;
+      });
+
+      const navLinks = Array.from(document.querySelectorAll(".side-nav a[href^='#']"));
+      function getLinkPanelIds(link) {
+        return (link.dataset.panels || link.getAttribute("href").slice(1))
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean);
+      }
+      const navTargets = Array.from(new Set(navLinks.flatMap(getLinkPanelIds)))
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+      const pageTitle = document.querySelector(".page-top h1");
+      const pageSubtitle = document.querySelector(".page-top p");
+
+      function setActiveNav(id) {
+        navLinks.forEach((link) => {
+          link.classList.toggle("active", link.getAttribute("href") === "#" + id);
+        });
+      }
+
+      function showPanel(id, shouldUpdateHash) {
+        const activeLink = navLinks.find((link) => {
+          const linkId = link.getAttribute("href").slice(1);
+          return linkId === id || getLinkPanelIds(link).includes(id);
+        }) || navLinks[0];
+        const activeId = activeLink.getAttribute("href").slice(1);
+        const panelIds = getLinkPanelIds(activeLink);
+        const hasTarget = panelIds.some((panelId) => document.getElementById(panelId));
+        if (!hasTarget) {
+          return;
+        }
+        navTargets.forEach((panel) => {
+          panel.classList.toggle("is-active", panelIds.includes(panel.id));
+        });
+        setActiveNav(activeId);
+
+        if (activeLink) {
+          if (pageTitle) {
+            pageTitle.textContent = activeLink.dataset.title || activeLink.textContent.trim();
+          }
+          if (pageSubtitle) {
+            pageSubtitle.textContent = activeLink.dataset.subtitle || "";
+          }
+        }
+        if (shouldUpdateHash) {
+          history.replaceState(null, "", "#" + activeId);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+
+      function showInitialPanel() {
+        const rawId = (window.location.hash || "#dashboard").slice(1);
+        const anchorTarget = document.getElementById(rawId);
+        const panelId = rawId.startsWith("token-") ? "rsshub" : rawId;
+        showPanel(panelId, false);
+        if (anchorTarget && rawId !== panelId) {
+          requestAnimationFrame(() => anchorTarget.scrollIntoView({ block: "start" }));
+        }
+      }
+
+      navLinks.forEach((link) => {
+        link.addEventListener("click", function (event) {
+          event.preventDefault();
+          const id = this.getAttribute("href").slice(1);
+          showPanel(id, true);
+        });
+      });
+
+      showInitialPanel();
+
+      const importModal = document.getElementById("import-modal");
+      const openImportButtons = document.querySelectorAll("[data-open-import]");
+      const closeImportButtons = document.querySelectorAll("[data-close-import]");
+
+      function openImportModal() {
+        if (importModal) {
+          importModal.hidden = false;
+        }
+      }
+
+      function closeImportModal() {
+        if (importModal) {
+          importModal.hidden = true;
+        }
+      }
+
+      openImportButtons.forEach((button) => button.addEventListener("click", openImportModal));
+      closeImportButtons.forEach((button) => button.addEventListener("click", closeImportModal));
+      if (importModal) {
+        importModal.addEventListener("click", function (event) {
+          if (event.target === importModal) {
+            closeImportModal();
+          }
+        });
+      }
+
+      let logsPanel = document.querySelector(".logs[data-latest-log-id]");
+      let latestLogId = Number(logsPanel?.dataset.latestLogId || 0);
+      const dirtyForms = new WeakSet();
+
+      document.addEventListener("input", function (event) {
+        const form = event.target.closest("form");
+        if (form) {
+          dirtyForms.add(form);
+        }
+      });
+
+      document.addEventListener("change", function (event) {
+        const form = event.target.closest("form");
+        if (form) {
+          dirtyForms.add(form);
+        }
+      });
+
+      document.addEventListener("submit", function (event) {
+        const form = event.target.closest("form");
+        if (form) {
+          dirtyForms.delete(form);
+        }
+      });
+
+      function panelHasUnsavedInput(panel) {
+        const activeElement = document.activeElement;
+        if (activeElement && panel.contains(activeElement) && activeElement.matches("input, textarea, select")) {
+          return true;
+        }
+        return Array.from(panel.querySelectorAll("form")).some((form) => dirtyForms.has(form));
+      }
+
+      async function refreshActivePanels() {
+        const response = await fetch(window.location.pathname, {
+          headers: { "Accept": "text/html" },
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          return;
+        }
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const activePanels = Array.from(document.querySelectorAll(".band.is-active"));
+        for (const panel of activePanels) {
+          const refreshItems = Array.from(panel.querySelectorAll("[data-refresh-key]"));
+          for (const item of refreshItems) {
+            if (panelHasUnsavedInput(item)) {
+              continue;
+            }
+            const key = item.dataset.refreshKey;
+            const freshItem = doc.querySelector(`[data-refresh-key="${CSS.escape(key)}"]`);
+            if (!freshItem) {
+              continue;
+            }
+            item.innerHTML = freshItem.innerHTML;
+          }
+        }
+        logsPanel = document.querySelector(".logs[data-latest-log-id]");
+        const freshLogsPanel = doc.querySelector(".logs[data-latest-log-id]");
+        latestLogId = Number(freshLogsPanel?.dataset.latestLogId || logsPanel?.dataset.latestLogId || latestLogId);
+        if (logsPanel) {
+          logsPanel.dataset.latestLogId = String(latestLogId);
+        }
+      }
+
+      async function watchLogs() {
+        const activePanel = document.querySelector(".band.is-active");
+        if (!logsPanel || !activePanel || !activePanel.querySelector("[data-refresh-key]")) {
+          return;
+        }
+        try {
+          const response = await fetch("/logs/latest", {
+            headers: { "Accept": "application/json" },
+            cache: "no-store",
+          });
+          if (!response.ok) {
+            return;
+          }
+          const payload = await response.json();
+          const nextId = Number(payload.id || 0);
+          if (nextId > latestLogId) {
+            await refreshActivePanels();
+          }
+        } catch (error) {
+          console.debug("log refresh skipped", error);
+        }
+      }
+
+      watchLogs();
+      window.setInterval(watchLogs, 4000);
+    </script>
+  </body>
+</html>

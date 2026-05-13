@@ -1,0 +1,592 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band is-active" id="dashboard">
+  <div class="metric-grid" data-refresh-key="dashboard-metrics">
+    <article class="metric-card">
+      <span>任务抓取</span>
+      <strong class="{{ 'ok-text' if stats.enabled_tasks == stats.healthy_lists else 'warn-text' }}">
+        {{ stats.healthy_lists }} / {{ stats.enabled_tasks }} 抓取正常
+      </strong>
+      <p>总 List：{{ stats.total_lists }} · 总任务：{{ stats.total_tasks }} · 未检测：{{ stats.unchecked_lists }}</p>
+    </article>
+    <article class="metric-card">
+      <span>最近扫描</span>
+      <strong>{{ stats.last_checked_at | beijing_time }}</strong>
+      <p>手动轮询会立即执行下一个队列项</p>
+    </article>
+    <article class="metric-card">
+      <span>Telegram</span>
+      <strong class="{{ 'ok-text' if stats.telegram_ready else 'warn-text' }}">
+        {{ '已配置' if stats.telegram_ready else '配置不完整' }}
+      </strong>
+      <p>{{ '可以发送通知' if stats.telegram_ready else '请填写 Bot Token 和 Chat ID' }}</p>
+    </article>
+    <article class="metric-card">
+      <span>RSSHub</span>
+      <strong>{{ stats.total_rsshub }}</strong>
+      <p>网页管理的容器数量</p>
+    </article>
+    <article class="metric-card">
+      <span>List 监控</span>
+      <strong>{{ stats.enabled_lists }} / {{ stats.total_lists }}</strong>
+      <p>启用中的列表数量</p>
+    </article>
+  </div>
+  <article class="panel stability-panel" data-refresh-key="dashboard-stability">
+    <div class="stability-head">
+      <div>
+        <h2>24小时抓取看板</h2>
+        <p>最近 24 小时 RSS 抓取成功率 <strong>{{ stability.availability }}%</strong></p>
+      </div>
+      <div class="chart-legend">
+        <span><i class="online-dot"></i>抓取正常</span>
+        <span><i class="offline-dot"></i>抓取波动</span>
+        <span><i class="idle-dot"></i>空闲</span>
+      </div>
+    </div>
+    <div class="stability-chart" aria-label="最近 24 小时 RSS 抓取成功率走势">
+      <svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img">
+        <defs>
+          <linearGradient id="stability-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.24"></stop>
+            <stop offset="100%" stop-color="#14b8a6" stop-opacity="0.08"></stop>
+          </linearGradient>
+        </defs>
+        <path class="chart-fill" d="{{ stability.line_path }} L 100 46 L 0 46 Z"></path>
+        <path class="chart-line" d="{{ stability.line_path }}"></path>
+        {% for point in stability.points %}
+          {% if point.offline %}
+            <line class="chart-wick" x1="{{ point.x }}" y1="{{ point.y }}" x2="{{ point.x }}" y2="46"></line>
+          {% endif %}
+        {% endfor %}
+      </svg>
+      {% for point in stability.points %}
+        <div class="chart-hover" style="left: {{ point.x }}%; top: {{ point.top }}%;">
+          <span></span>
+          <div class="chart-tip">{{ point.detail }}</div>
+        </div>
+      {% endfor %}
+      <div class="chart-grid">
+        <span>100%</span>
+        <span>80%</span>
+        <span>60%</span>
+        <span>40%</span>
+        <span>20%</span>
+        <span>0%</span>
+      </div>
+    </div>
+    <div class="chart-labels">
+      {% for label in stability.labels %}
+        <span>{{ label }}</span>
+      {% endfor %}
+    </div>
+  </article>
+</section>
+
+<section class="band" id="rsshub">
+  <div class="section-head">
+    <div>
+      <h2>RSSHub 容器</h2>
+      <p>新增后会创建 RSSHub 容器；每个监控 List 可以选择使用哪个 RSSHub 抓取。</p>
+    </div>
+    <form method="post" action="/rsshub/discover">
+      <button type="submit" class="secondary">查询当前 RSSHub 容器</button>
+    </form>
+  </div>
+  {% if not docker_available %}
+    <div class="panel error-text">
+      当前未挂载 Docker socket，网页只能保存配置，不能直接创建或删除容器。请更新后按说明重建服务。
+    </div>
+  {% endif %}
+
+  <div class="panel rsshub-list">
+    {% for item in rsshub_instances %}
+      <div class="rsshub-row">
+        <div data-refresh-key="rsshub-{{ item.id }}-identity">
+          <strong>{{ item.name }}</strong>
+          <code>{{ item.internal_url }}</code>
+        </div>
+        <div data-refresh-key="rsshub-{{ item.id }}-port">
+          <span>宿主机端口</span>
+          <b>127.0.0.1:{{ item.host_port }}</b>
+        </div>
+        <div data-refresh-key="rsshub-{{ item.id }}-status">
+          <span>状态</span>
+          <b>{{ item.status }}</b>
+        </div>
+        <div class="actions">
+          <form method="post" action="/rsshub/{{ item.id }}/test">
+            <button type="submit" class="secondary">测试抓取</button>
+          </form>
+          {% if item.container_id %}
+            <form method="post" action="/rsshub/{{ item.id }}/refresh">
+              <button type="submit" class="secondary">刷新状态</button>
+            </form>
+            <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 容器：{{ item.name }} 吗？">
+              <button type="submit" class="danger">删除</button>
+            </form>
+          {% else %}
+            <span class="muted">未创建</span>
+            <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 记录：{{ item.name }} 吗？">
+              <button type="submit" class="danger">删除</button>
+            </form>
+          {% endif %}
+        </div>
+        <div class="rsshub-test span-4" data-refresh-key="rsshub-{{ item.id }}-test">
+          <span>测试结果</span>
+          <b class="test-message {{ 'ok-text' if item.last_test_ok else 'warn-text' }}">
+            {{ item.last_test_message or '未测试' }}
+          </b>
+          <small>测试时间：{{ item.last_test_at | beijing_time }}</small>
+        </div>
+        <details class="span-4">
+          <summary>编辑 RSSHub 配置</summary>
+          <form class="rsshub-form edit-form" method="post" action="/rsshub/{{ item.id }}/update" data-confirm="确认保存并重建 RSSHub 容器：{{ item.name }} 吗？">
+            <label>容器名称
+              <input name="name" value="{{ item.name }}" required>
+            </label>
+            <label>宿主机端口
+              <input name="host_port" type="number" min="1" max="65535" value="{{ item.host_port }}" required>
+            </label>
+            <label>RSSHub auth_token
+              <input name="twitter_auth_token" value="{{ item.twitter_auth_token }}" autocomplete="off" placeholder="可选；给 RSSHub 使用">
+            </label>
+            <label>第三方 API
+              <input name="third_party_api" value="{{ item.third_party_api }}" autocomplete="off" placeholder="可选">
+            </label>
+            <label class="span-2">RSSHub 代理
+              <select name="proxy_uri">
+                <option value="">不使用代理</option>
+                {% for proxy in proxies %}
+                  <option value="{{ proxy.proxy_url }}" {% if item.proxy_uri == proxy.proxy_url %}selected{% endif %}>
+                    {{ proxy.name }} - {{ proxy.proxy_url }}{% if not proxy.enabled %}（停用）{% elif proxy.last_test_ok %}（已检测）{% else %}（未检测）{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="actions span-2">
+              <button type="submit">保存并重建</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    {% else %}
+      <p class="muted">暂无记录。点击“查询当前 RSSHub 容器”可以扫描当前 Docker 里已有的 RSSHub。</p>
+    {% endfor %}
+  </div>
+
+  <details class="panel compact-details add-panel">
+    <summary>新增 RSSHub 容器</summary>
+    <form class="rsshub-form" method="post" action="/rsshub">
+      <label>容器名称
+        <input name="name" required placeholder="rsshub3">
+      </label>
+      <label>宿主机端口
+        <input name="host_port" type="number" min="1" max="65535" required placeholder="1203">
+      </label>
+      <label>RSSHub auth_token
+        <input name="twitter_auth_token" autocomplete="off" placeholder="可选；给 RSSHub 使用">
+      </label>
+      <label>第三方 API
+        <input name="third_party_api" autocomplete="off" placeholder="可选">
+      </label>
+      <label class="span-2">RSSHub 代理
+        <select name="proxy_uri">
+          <option value="">不使用代理</option>
+          {% for proxy in proxies %}
+            <option value="{{ proxy.proxy_url }}">
+              {{ proxy.name }} - {{ proxy.proxy_url }}{% if not proxy.enabled %}（停用）{% elif proxy.last_test_ok %}（已检测）{% else %}（未检测）{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="actions span-2">
+        <button type="submit">新增 RSSHub</button>
+      </div>
+    </form>
+  </details>
+
+  <div class="section-head">
+    <div>
+      <h2>监控方案</h2>
+      <p>按 List 绑定一个或多个 RSSHub 容器；如果多个 RSSHub 监控同一个 List，系统会按全局轮询秒数在这些任务之间轮流执行。</p>
+    </div>
+  </div>
+  <div class="monitor-grid">
+    {% for item in lists %}
+    <article class="token-card monitor-card">
+      {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
+      {% set list_bindings = bindings_by_list.get(item.id, []) %}
+      <div data-refresh-key="monitor-card-{{ item.id }}-status">
+        <h3>{{ item.name or '未命名 List' }}</h3>
+        <p>
+          {% if not item.last_checked_at and not item.last_success_at and not item.last_error %}
+            <span class="badge muted">未检测</span>
+          {% else %}
+            <span class="badge {{ 'ok' if item.healthy else 'bad' }}">{{ '抓取正常' if item.healthy else '抓取异常' }}</span>
+          {% endif %}
+          <span class="badge {{ 'ok' if item.enabled else 'muted' }}">{{ '启用' if item.enabled else '停用' }}</span>
+          {% set enabled_binding_count = list_bindings | selectattr('enabled') | list | length %}
+          {% if enabled_binding_count %}
+            {% for binding in list_bindings if binding.enabled %}
+              {% set bound_rsshub = rsshub_by_id.get(binding.rsshub_instance_id) %}
+              <span class="badge muted">{{ bound_rsshub.name if bound_rsshub else ('rsshub-' ~ binding.rsshub_instance_id) }}</span>
+            {% endfor %}
+          {% else %}
+            <span class="badge muted">未绑定 RSSHub</span>
+          {% endif %}
+          <code>{{ item.list_id }}</code>
+        </p>
+        <p>当前绑定 {{ enabled_binding_count }} 个 RSSHub；全局共 {{ stats.enabled_tasks }} 个任务，按每 {{ settings.global_poll_seconds }} 秒轮询，完整一圈约 {{ stats.enabled_tasks * (settings.global_poll_seconds | int) }} 秒。</p>
+        <p>
+          最后检查：{{ item.last_checked_at | beijing_time }}
+          · 最后成功：{{ item.last_success_at | beijing_time }}
+        </p>
+        {% if item.last_error %}
+          <p class="error-text">{{ item.last_error }}</p>
+        {% endif %}
+      </div>
+      <div class="actions">
+        <form method="post" action="/lists/{{ item.id }}/check">
+          <button class="secondary" type="submit">手动检测</button>
+        </form>
+        <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
+          <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
+        </form>
+        <details class="inline-edit">
+          <summary>绑定 RSSHub</summary>
+          <form class="binding-form" method="post" action="/lists/{{ item.id }}/bindings" data-pending-text="保存中...">
+            {% for rsshub_item in rsshub_instances %}
+              <label class="check">
+                <input
+                  type="checkbox"
+                  name="rsshub_ids"
+                  value="{{ rsshub_item.id }}"
+                  {% if list_bindings | selectattr('rsshub_instance_id', 'equalto', rsshub_item.id) | selectattr('enabled') | list %}checked{% endif %}
+                >
+                <span>{{ rsshub_item.name }}</span>
+              </label>
+            {% endfor %}
+            <div class="actions binding-actions">
+              <button type="submit">保存绑定</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    </article>
+    {% else %}
+      <div class="panel muted">暂无监控方案。先在“监控名单”添加 List。</div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="band" id="lists">
+  <div class="section-head">
+    <div>
+      <h2>监控 List</h2>
+      <p>这里是统一 List 池；每个 List 选择一个 RSSHub 容器抓取，发现新推文后推送 Telegram。</p>
+    </div>
+  </div>
+  <div class="panel list-box">
+    <form class="list-form" method="post" action="/lists">
+      <input name="name" placeholder="列表备注">
+      <input name="list_id" placeholder="List URL 或 ID" required>
+      <select name="rsshub_instance_id">
+        <option value="0">默认 RSSHub</option>
+        {% for rsshub in rsshub_instances %}
+          <option value="{{ rsshub.id }}">{{ rsshub.name }} - {{ rsshub.internal_url }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">添加 List</button>
+    </form>
+    <div class="table" data-refresh-key="lists-table">
+      {% for item in lists %}
+        <div class="row">
+          <span>{{ item.name or '未命名' }}</span>
+          <code>{{ item.list_id }}</code>
+          {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
+          <span>{{ rsshub.name if rsshub else '默认 RSSHub' }}</span>
+          <span>
+            {% if item.last_checked_at %}
+              {{ '抓取正常' if item.healthy else '抓取异常' }} · {{ item.last_checked_at | beijing_time }}
+            {% else %}
+              待检测
+            {% endif %}
+          </span>
+          <form method="post" action="/lists/{{ item.id }}/check">
+            <button type="submit" class="secondary">检测</button>
+          </form>
+          <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
+            <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
+          </form>
+          <form method="post" action="/lists/{{ item.id }}/delete" data-confirm="确认删除 List：{{ item.name or item.list_id }} 吗？">
+            <button type="submit" class="danger">删除</button>
+          </form>
+          <details class="span-4 inline-edit">
+            <summary>编辑</summary>
+            <form class="list-form" method="post" action="/lists">
+              <input type="hidden" name="list_row_id" value="{{ item.id }}">
+              <input name="name" value="{{ item.name }}" placeholder="列表备注">
+              <input name="list_id" value="{{ item.list_id }}" required>
+              <select name="rsshub_instance_id">
+                <option value="0">默认 RSSHub</option>
+                {% for rsshub in rsshub_instances %}
+                  <option value="{{ rsshub.id }}" {% if item.rsshub_instance_id == rsshub.id %}selected{% endif %}>
+                    {{ rsshub.name }} - {{ rsshub.internal_url }}
+                  </option>
+                {% endfor %}
+              </select>
+              <button type="submit">保存</button>
+            </form>
+          </details>
+        </div>
+      {% else %}
+        <p class="muted">暂无 List。</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="band" id="aliases">
+  <div class="section-head">
+    <div>
+      <h2>用户备注</h2>
+      <p>填写用户名和备注；命中该用户发帖时，TG 推送会显示“备注 @用户名”。</p>
+    </div>
+  </div>
+  <form class="panel alias-form" method="post" action="/aliases">
+    <label>用户名
+      <input name="username" required placeholder="@username 或 username">
+    </label>
+    <label>备注
+      <input name="note" required placeholder="例如：客户A / 重点账号 / 项目方">
+    </label>
+    <div class="actions">
+      <button type="submit">保存备注</button>
+    </div>
+  </form>
+  <div class="panel alias-list" data-refresh-key="alias-list">
+    {% for alias in aliases %}
+      <div class="alias-row">
+        <strong>{{ alias.note }}</strong>
+        <code>@{{ alias.username }}</code>
+        <form method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
+          <button type="submit" class="danger">删除</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="muted">暂无用户备注。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="band" id="proxies">
+  <div class="section-head">
+    <div>
+      <h2>代理设置</h2>
+      <p>统一维护代理池；RSSHub 容器只能选择这里已启用并检测通过的代理。</p>
+    </div>
+    <form method="post" action="/proxies/test-all" data-confirm="确认批量检测所有代理吗？">
+      <button type="submit" class="secondary">批量检测代理</button>
+    </form>
+  </div>
+
+  <details class="panel compact-details add-panel">
+    <summary>新增代理</summary>
+    <form class="proxy-form" method="post" action="/proxies">
+      <label>代理名称
+        <input name="name" required placeholder="proxy-1">
+      </label>
+      <label class="span-2">代理地址
+        <input name="proxy_url" required placeholder="http://用户:密码@IP:端口 或 https://用户:密码@IP:端口">
+      </label>
+      <label class="check">
+        <input name="enabled" type="checkbox" checked>
+        <span>启用</span>
+      </label>
+      <div class="actions span-2">
+        <button type="submit">保存代理</button>
+      </div>
+    </form>
+  </details>
+
+  <div class="panel proxy-list">
+    {% for proxy in proxies %}
+      <div class="proxy-row">
+        <div data-refresh-key="proxy-{{ proxy.id }}-identity">
+          <strong>{{ proxy.name }}</strong>
+          <code>{{ proxy.proxy_url }}</code>
+        </div>
+        <div data-refresh-key="proxy-{{ proxy.id }}-status">
+          <span>状态</span>
+          <p>
+            <span class="badge {{ 'ok' if proxy.enabled else 'muted' }}">{{ '启用' if proxy.enabled else '停用' }}</span>
+            <span class="badge {{ 'ok' if proxy.last_test_ok else 'warn' }}">{{ '检测通过' if proxy.last_test_ok else '未通过/未检测' }}</span>
+          </p>
+        </div>
+        <div class="actions">
+          <form method="post" action="/proxies/{{ proxy.id }}/test">
+            <button class="secondary" type="submit">检测代理</button>
+          </form>
+          <form method="post" action="/proxies/{{ proxy.id }}/delete" data-confirm="确认删除代理：{{ proxy.name }} 吗？正在使用的代理不会被删除。">
+            <button class="danger" type="submit">删除</button>
+          </form>
+        </div>
+        <div class="rsshub-test span-3" data-refresh-key="proxy-{{ proxy.id }}-test">
+          <span>检测结果</span>
+          <b class="test-message {{ 'ok-text' if proxy.last_test_ok else 'warn-text' }}">
+            {{ proxy.last_test_message or '未检测' }}
+          </b>
+          <small>检测时间：{{ proxy.last_test_at | beijing_time }}</small>
+        </div>
+        <details class="span-3">
+          <summary>编辑代理</summary>
+          <form class="proxy-form edit-form" method="post" action="/proxies">
+            <input type="hidden" name="proxy_id" value="{{ proxy.id }}">
+            <label>代理名称
+              <input name="name" value="{{ proxy.name }}" required>
+            </label>
+            <label class="span-2">代理地址
+              <input name="proxy_url" value="{{ proxy.proxy_url }}" required>
+            </label>
+            <label class="check">
+              <input name="enabled" type="checkbox" {% if proxy.enabled %}checked{% endif %}>
+              <span>启用</span>
+            </label>
+            <div class="actions span-2">
+              <button type="submit">保存修改</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    {% else %}
+      <p class="muted">暂无代理。先新增代理并检测通过，再到 RSSHub 容器里选择使用。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="band" id="settings">
+  <div class="section-head">
+    <div>
+      <h2>系统设置</h2>
+      <p>全局轮询建议 5 秒；系统按启用 List 轮流请求对应 RSSHub 容器。</p>
+    </div>
+  </div>
+  <form class="panel settings-grid" method="post" action="/settings/general">
+    <label>Telegram Bot Token
+      <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
+    </label>
+    <label>Telegram Chat ID
+      <input name="telegram_chat_id" value="{{ settings.telegram_chat_id }}">
+    </label>
+    <label>全局轮询秒数
+      <input name="global_poll_seconds" type="number" min="1" value="{{ settings.global_poll_seconds }}">
+    </label>
+    <label>失败冷却分钟
+      <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
+    </label>
+    <label class="span-2">Apprise URLs
+      <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
+    </label>
+    <div class="actions span-2">
+      <button type="submit">保存配置</button>
+      <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
+    </div>
+  </form>
+
+  <form class="panel settings-grid" method="post" action="/settings/translation">
+    <label class="check">
+      <input name="translate_enabled" type="checkbox" {% if settings.translate_enabled == '1' %}checked{% endif %}>
+      <span>启用 OpenAI 翻译</span>
+    </label>
+    <div class="span-2 muted">收到推文后，调用 OpenAI 接口把正文翻译成中文，再一起转发到 Telegram。</div>
+    <label>主 API Key
+      <input name="translate_api_key_primary" value="{{ settings.translate_api_key_primary }}" autocomplete="off">
+    </label>
+    <label>主模型
+      <input name="translate_model_primary" value="{{ settings.translate_model_primary }}">
+    </label>
+    <label class="span-2">主 Base URL
+      <input name="translate_base_url_primary" value="{{ settings.translate_base_url_primary }}">
+    </label>
+    <label>备用 API Key
+      <input name="translate_api_key_backup" value="{{ settings.translate_api_key_backup }}" autocomplete="off">
+    </label>
+    <label>备用模型
+      <input name="translate_model_backup" value="{{ settings.translate_model_backup }}">
+    </label>
+    <label class="span-2">备用 Base URL
+      <input name="translate_base_url_backup" value="{{ settings.translate_base_url_backup }}">
+    </label>
+    <label class="span-2">转发格式
+      <select name="translate_forward_mode">
+        <option value="translated_only" {% if settings.translate_forward_mode == 'translated_only' %}selected{% endif %}>仅中文</option>
+        <option value="original_and_translation" {% if settings.translate_forward_mode == 'original_and_translation' %}selected{% endif %}>原文 + 中文</option>
+      </select>
+    </label>
+    <div class="rsshub-test span-2">
+      <span>当前翻译接口</span>
+      <b class="test-message ok-text">{{ '主用' if settings.translate_active_slot == 'primary' else '备用' }}</b>
+      <small>主用失败时自动切换备用；备用期间每 30 分钟自动探测主用，恢复后自动切回。</small>
+    </div>
+    <div class="actions span-2">
+      <button type="submit">保存翻译配置</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation-primary">测主用</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation-backup">测备用</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation-auto">测自动切换</button>
+      <button type="submit" class="secondary" formaction="/settings/check-translation-balance-primary">查主用余额</button>
+      <button type="submit" class="secondary" formaction="/settings/check-translation-balance-backup">查备用余额</button>
+    </div>
+    <div class="rsshub-test span-2">
+      <span>主用翻译测试结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_primary_test_result or '') else 'ok-text' }}">
+        {{ settings.translate_primary_test_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test span-2">
+      <span>备用翻译测试结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_backup_test_result or '') else 'ok-text' }}">
+        {{ settings.translate_backup_test_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test span-2">
+      <span>自动切换测试结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_auto_test_result or '') else 'ok-text' }}">
+        {{ settings.translate_auto_test_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test">
+      <span>主用余额查询结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_primary_balance_result or '') else 'ok-text' }}">
+        {{ settings.translate_primary_balance_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test">
+      <span>备用余额查询结果</span>
+      <b class="test-message {{ 'warn-text' if ('失败' in (settings.translate_backup_balance_result or '') and '暂不支持' not in (settings.translate_backup_balance_result or '')) else 'ok-text' }}">
+        {{ settings.translate_backup_balance_result or '暂无结果' }}
+      </b>
+    </div>
+  </form>
+</section>
+
+<section class="band" id="logs">
+  <div class="section-head">
+    <div>
+      <h2>运行日志</h2>
+      <p>显示最近 120 条事件，包括 RSSHub 抓取异常、恢复结果和推送状态。</p>
+    </div>
+  </div>
+  <div class="panel logs" data-latest-log-id="{{ latest_log_id }}" data-refresh-key="logs-list">
+    {% for log in logs %}
+      <div class="log {{ log.level | lower }}">
+        <time>{{ log.created_at | beijing_time }}</time>
+        <strong>{{ log.level }}</strong>
+        <span>{{ log.message }}</span>
+      </div>
+    {% else %}
+      <p class="muted">暂无日志。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

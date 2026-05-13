@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tuite TG 登录</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  </head>
+  <body>
+    <main class="login-shell">
+      <form class="auth-panel" method="post" action="/login">
+        <h1>Tuite TG</h1>
+        <label>账号
+          <input name="username" autocomplete="username" required>
+        </label>
+        <label>密码
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        {% if request.query_params.get("error") %}
+          <p class="error-text">账号或密码错误。</p>
+        {% endif %}
+        <button type="submit">登录</button>
+      </form>
+    </main>
+  </body>
+</html>
