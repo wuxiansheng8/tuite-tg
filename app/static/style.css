@@ -720,8 +720,8 @@ summary {
 
 .alias-row {
   display: grid;
-  grid-template-columns: minmax(240px, 0.9fr) minmax(160px, 0.45fr) max-content auto;
-  gap: 24px;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(180px, 0.6fr) minmax(120px, 0.4fr) 92px;
+  gap: 18px;
   align-items: center;
   padding: 7px 8px;
   background: #f7fcfc;
@@ -757,7 +757,7 @@ summary {
 }
 
 .alias-row form {
-  justify-self: end;
+  justify-self: start;
   margin: 0;
 }
 
