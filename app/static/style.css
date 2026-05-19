@@ -731,10 +731,9 @@ summary {
 
 .alias-main {
   display: grid;
-  grid-template-columns: minmax(160px, 34ch) minmax(120px, max-content) max-content;
-  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.7fr) max-content;
+  gap: clamp(24px, 5vw, 92px);
   align-items: center;
-  justify-content: start;
   min-width: 0;
 }
 
@@ -1046,8 +1045,8 @@ summary {
   }
 
   .alias-main {
-    grid-template-columns: minmax(100px, 24ch) minmax(82px, max-content) max-content;
-    gap: 6px;
+    grid-template-columns: minmax(100px, 1fr) minmax(82px, auto) max-content;
+    gap: 12px;
   }
 
   .alias-main span {
