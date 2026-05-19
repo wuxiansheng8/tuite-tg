@@ -719,9 +719,8 @@ summary {
 }
 
 .alias-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(150px, 0.8fr) minmax(128px, max-content) 56px;
-  gap: 8px 12px;
+  display: flex;
+  gap: 10px;
   align-items: center;
   padding: 7px 8px;
   background: #f7fcfc;
@@ -736,15 +735,24 @@ summary {
   overflow-wrap: anywhere;
 }
 
+.alias-row strong {
+  flex: 0 1 40%;
+}
+
+.alias-row code {
+  flex: 0 1 180px;
+}
+
 .alias-row span {
+  flex: 0 0 auto;
+  margin-left: auto;
   color: var(--muted);
   font-size: 12px;
-  justify-self: end;
   white-space: nowrap;
 }
 
 .alias-row form {
-  justify-self: end;
+  flex: 0 0 auto;
   margin: 0;
 }
 
@@ -1024,9 +1032,16 @@ summary {
 
 @media (max-width: 820px) {
   .alias-row {
-    grid-template-columns: minmax(90px, 1fr) minmax(86px, 0.8fr) minmax(74px, max-content) 52px;
     gap: 6px;
     font-size: 13px;
+  }
+
+  .alias-row strong {
+    flex-basis: 32%;
+  }
+
+  .alias-row code {
+    flex-basis: 92px;
   }
 
   .alias-row span {
