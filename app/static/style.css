@@ -720,13 +720,18 @@ summary {
 
 .alias-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1fr) minmax(180px, 0.8fr) auto;
   gap: 8px;
   align-items: center;
   padding: 8px;
   background: #f7fcfc;
   border: 1px solid #e1f0f0;
   border-radius: 8px;
+}
+
+.alias-row span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .row {

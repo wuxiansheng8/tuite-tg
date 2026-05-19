@@ -101,6 +101,7 @@ USER_ALIAS_EXPORT_FIELDS = [
     "id",
     "username",
     "note",
+    "last_spoke_at",
     "created_at",
     "updated_at",
 ]

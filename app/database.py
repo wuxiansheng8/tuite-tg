@@ -164,6 +164,7 @@ class UserAlias(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(120), unique=True, nullable=False, index=True)
     note = Column(String(200), nullable=False, default="")
+    last_spoke_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
@@ -323,6 +324,13 @@ def ensure_schema_migrations() -> None:
                 conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN created_at DATETIME")
             if "updated_at" not in proxy_columns:
                 conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN updated_at DATETIME")
+
+        alias_columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(user_aliases)").fetchall()
+        }
+        if alias_columns and "last_spoke_at" not in alias_columns:
+            conn.exec_driver_sql("ALTER TABLE user_aliases ADD COLUMN last_spoke_at DATETIME")
 
 
 def get_db() -> Iterator[Session]:

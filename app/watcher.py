@@ -156,6 +156,7 @@ class Watcher:
             description = item.get("description", "")
             link = item.get("link", "")
             username = normalize_username(str(item.get("username") or extract_username_from_item(item)))
+            update_alias_last_spoke(username, item.get("published_at"))
             author_label = resolve_author_label(username)
             with session_scope() as db:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
@@ -277,6 +278,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "description": description,
                 "link": entry.get("link", ""),
                 "username": extract_username_from_entry(entry),
+                "published_at": parse_entry_datetime(entry),
             }
         )
     return entries
@@ -514,6 +516,21 @@ def resolve_author_label(username: str) -> str:
     return f"@{username}"
 
 
+def update_alias_last_spoke(username: str, spoke_at: object) -> None:
+    if not username:
+        return
+    at = ensure_datetime(spoke_at) or utc_now()
+    with session_scope() as db:
+        alias = db.query(UserAlias).filter(UserAlias.username == username).first()
+        if not alias:
+            return
+        current = ensure_datetime(alias.last_spoke_at)
+        if current and current >= at:
+            return
+        alias.last_spoke_at = at
+        alias.updated_at = utc_now()
+
+
 def normalize_username(value: str) -> str:
     value = value.strip().removeprefix("@").lower()
     return value
@@ -597,6 +614,30 @@ def extract_tweet_id(value: str) -> str:
         if match:
             return match.group(1)
     return ""
+
+
+def parse_entry_datetime(entry) -> datetime | None:
+    for key in ("published_parsed", "updated_parsed", "created_parsed"):
+        value = entry.get(key)
+        if value:
+            return datetime(*value[:6], tzinfo=timezone.utc)
+    for key in ("published", "updated", "created"):
+        parsed = parse_datetime(str(entry.get(key) or ""))
+        if parsed:
+            return parsed
+    return None
+
+
+def ensure_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, str):
+        return parse_datetime(value)
+    return None
 
 
 def elapsed_since(then: datetime, now: datetime) -> timedelta:
