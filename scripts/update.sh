@@ -11,4 +11,6 @@ git fetch "$remote" "$branch"
 git reset --hard "$remote/$branch"
 
 echo "当前版本：$(git rev-parse --short HEAD)"
+echo "正在重建并重启服务 ..."
+docker compose up -d --build
 echo "同步完成。"

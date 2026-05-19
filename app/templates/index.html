@@ -376,9 +376,11 @@
   <div class="panel alias-list" data-refresh-key="alias-list">
     {% for alias in aliases %}
       <div class="alias-row">
-        <strong>{{ alias.note }}</strong>
-        <code>@{{ alias.username }}</code>
-        <span>发言：{{ alias.last_spoke_at | beijing_time }}</span>
+        <div class="alias-main">
+          <strong>{{ alias.note }}</strong>
+          <code>@{{ alias.username }}</code>
+          <span>发言：{{ alias.last_spoke_at | beijing_time }}</span>
+        </div>
         <form method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
           <button type="submit" class="danger">删除</button>
         </form>
