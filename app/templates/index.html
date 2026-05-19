@@ -353,6 +353,10 @@
       <h2>用户备注</h2>
       <p>填写用户名和备注；命中该用户发帖时，TG 推送会显示“备注 @用户名”。</p>
     </div>
+    <div class="actions">
+      <a class="button-link secondary" href="/aliases/template">下载模板</a>
+      <a class="button-link" href="/aliases/export">导出备注</a>
+    </div>
   </div>
   <form class="panel alias-form" method="post" action="/aliases">
     <label>用户名
@@ -365,6 +369,18 @@
       <button type="submit">保存备注</button>
     </div>
   </form>
+  <details class="panel compact-details add-panel">
+    <summary>导入用户备注 TXT</summary>
+    <form class="import-form" method="post" action="/aliases/import" enctype="multipart/form-data" data-confirm="确认导入用户备注吗？同名用户名会更新备注，不会删除现有备注。">
+      <label class="span-2">TXT 文件
+        <input name="alias_file" type="file" accept=".txt,text/plain" required>
+      </label>
+      <div class="actions span-2">
+        <button type="submit">导入备注</button>
+        <a class="button-link secondary" href="/aliases/template">下载模板</a>
+      </div>
+    </form>
+  </details>
   <div class="panel alias-list" data-refresh-key="alias-list">
     {% for alias in aliases %}
       <div class="alias-row">

@@ -104,6 +104,15 @@ USER_ALIAS_EXPORT_FIELDS = [
     "created_at",
     "updated_at",
 ]
+USER_ALIAS_TXT_TEMPLATE = """# Tuite TG 用户备注导入模板
+# 每行一条，推荐使用 Tab 分隔：用户名<TAB>备注
+# 用户名可以写 @username、username，或 https://x.com/username
+# 空行和 # 开头的行会被忽略
+#
+# 示例：
+@username\t客户A / 重点账号
+project_user\t项目方
+"""
 RSSHUB_EXPORT_FIELDS = [
     "id",
     "name",
@@ -669,6 +678,78 @@ async def delete_alias(
     return RedirectResponse("/#aliases", status_code=303)
 
 
+@app.get("/aliases/template")
+async def download_alias_template(
+    _: str = Depends(current_user_from_cookie),
+):
+    return Response(
+        content=USER_ALIAS_TXT_TEMPLATE,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="tuite-tg-user-aliases-template.txt"'},
+    )
+
+
+@app.get("/aliases/export")
+async def export_aliases(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    rows = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
+    content = "\n".join(f"@{item.username}\t{item.note}" for item in rows)
+    if content:
+        content += "\n"
+    filename = f"tuite-tg-user-aliases-{beijing_now().strftime('%Y%m%d%H%M%S')}.txt"
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/aliases/import")
+async def import_aliases(
+    alias_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        raw = await alias_file.read()
+    except Exception as exc:
+        add_log(db, "ERROR", f"用户备注导入失败：文件无法读取 ({exc})")
+        return RedirectResponse("/#aliases", status_code=303)
+    text = decode_alias_txt(raw)
+
+    parsed_rows, errors = parse_alias_txt(text)
+    if not parsed_rows:
+        detail = f"，前 {min(len(errors), 3)} 个错误：{'；'.join(errors[:3])}" if errors else ""
+        add_log(db, "ERROR", f"用户备注导入失败：没有可导入的数据{detail}")
+        return RedirectResponse("/#aliases", status_code=303)
+
+    now = utc_now()
+    imported: dict[str, str] = {}
+    for username, note in parsed_rows:
+        imported[username] = note
+
+    created = 0
+    updated = 0
+    for username, note in imported.items():
+        alias = db.query(UserAlias).filter(UserAlias.username == username).first()
+        if alias:
+            alias.note = note
+            alias.updated_at = now
+            updated += 1
+        else:
+            db.add(UserAlias(username=username, note=note, created_at=now, updated_at=now))
+            created += 1
+
+    skipped = len(errors)
+    message = f"用户备注导入完成：新增 {created} 条，更新 {updated} 条"
+    if skipped:
+        message += f"，跳过 {skipped} 行"
+    add_log(db, "INFO", message)
+    return RedirectResponse("/#aliases", status_code=303)
+
+
 @app.post("/proxies")
 async def save_proxy(
     proxy_id: str = Form(""),
@@ -1203,6 +1284,43 @@ def normalize_username(value: str) -> str:
         else:
             value = parts[-1] if parts else value
     return value.lower()
+
+
+def parse_alias_txt(text: str) -> tuple[list[tuple[str, str]], list[str]]:
+    rows: list[tuple[str, str]] = []
+    errors: list[str] = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        username, note = split_alias_line(line)
+        clean_username = normalize_username(username)
+        clean_note = note.strip()
+        if not clean_username or not clean_note:
+            errors.append(f"第 {line_number} 行格式错误")
+            continue
+        rows.append((clean_username, clean_note))
+    return rows, errors
+
+
+def decode_alias_txt(raw: bytes) -> str:
+    for encoding in ("utf-8-sig", "gb18030"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def split_alias_line(line: str) -> tuple[str, str]:
+    for separator in ("\t", ",", "，", "="):
+        if separator in line:
+            left, right = line.split(separator, 1)
+            return left, right
+    parts = line.split(maxsplit=1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return line, ""
 
 
 def sanitize_container_name(value: str) -> str:
