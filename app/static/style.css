@@ -720,7 +720,7 @@ summary {
 
 .alias-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(130px, 0.9fr) minmax(160px, 0.8fr) auto;
+  grid-template-columns: minmax(160px, 1fr) minmax(150px, 0.8fr) minmax(128px, max-content) 56px;
   gap: 8px 12px;
   align-items: center;
   padding: 7px 8px;
@@ -739,10 +739,13 @@ summary {
 .alias-row span {
   color: var(--muted);
   font-size: 12px;
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .alias-row form {
   justify-self: end;
+  margin: 0;
 }
 
 .alias-row .danger {
@@ -1021,7 +1024,7 @@ summary {
 
 @media (max-width: 820px) {
   .alias-row {
-    grid-template-columns: minmax(82px, 1fr) minmax(96px, 0.9fr) minmax(112px, 1fr) auto;
+    grid-template-columns: minmax(90px, 1fr) minmax(86px, 0.8fr) minmax(74px, max-content) 52px;
     gap: 6px;
     font-size: 13px;
   }
