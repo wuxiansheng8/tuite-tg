@@ -203,6 +203,29 @@
         });
       }
 
+      document.addEventListener("click", function (event) {
+        const trigger = event.target.closest("[data-alias-import-trigger]");
+        if (!trigger) {
+          return;
+        }
+        const form = trigger.closest("form");
+        const input = form?.querySelector("[data-alias-import-file]");
+        if (input) {
+          input.click();
+        }
+      });
+
+      document.addEventListener("change", function (event) {
+        const input = event.target.closest("[data-alias-import-file]");
+        if (!input || !input.files || !input.files.length) {
+          return;
+        }
+        const form = input.closest("form");
+        if (form) {
+          form.requestSubmit();
+        }
+      });
+
       let logsPanel = document.querySelector(".logs[data-latest-log-id]");
       let latestLogId = Number(logsPanel?.dataset.latestLogId || 0);
       const dirtyForms = new WeakSet();

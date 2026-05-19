@@ -179,6 +179,10 @@ body {
   flex-wrap: wrap;
 }
 
+.inline-upload-form {
+  margin: 0;
+}
+
 .content-shell {
   width: min(1320px, calc(100% - 64px));
   margin: 26px auto 64px;

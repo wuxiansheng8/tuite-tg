@@ -356,6 +356,10 @@
     <div class="actions">
       <a class="button-link secondary" href="/aliases/template">下载模板</a>
       <a class="button-link" href="/aliases/export">导出备注</a>
+      <form class="inline-upload-form" method="post" action="/aliases/import" enctype="multipart/form-data" data-confirm="确认导入用户备注吗？同名用户名会更新备注，不会删除现有备注。">
+        <input name="alias_file" type="file" accept=".txt,text/plain" required hidden data-alias-import-file>
+        <button type="button" class="secondary" data-alias-import-trigger>导入备注</button>
+      </form>
     </div>
   </div>
   <form class="panel alias-form" method="post" action="/aliases">
@@ -369,18 +373,6 @@
       <button type="submit">保存备注</button>
     </div>
   </form>
-  <details class="panel compact-details add-panel">
-    <summary>导入用户备注 TXT</summary>
-    <form class="import-form" method="post" action="/aliases/import" enctype="multipart/form-data" data-confirm="确认导入用户备注吗？同名用户名会更新备注，不会删除现有备注。">
-      <label class="span-2">TXT 文件
-        <input name="alias_file" type="file" accept=".txt,text/plain" required>
-      </label>
-      <div class="actions span-2">
-        <button type="submit">导入备注</button>
-        <a class="button-link secondary" href="/aliases/template">下载模板</a>
-      </div>
-    </form>
-  </details>
   <div class="panel alias-list" data-refresh-key="alias-list">
     {% for alias in aliases %}
       <div class="alias-row">
