@@ -528,9 +528,7 @@ def resolve_alias_note(username: str) -> str:
     if not clean_username:
         return ""
     with session_scope() as db:
-        alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
-        if alias:
-            return alias.note
+        return find_alias_note(db, clean_username)
     return ""
 
 
@@ -540,10 +538,28 @@ def resolve_source_label(source: str) -> str:
         return ""
     clean_username = normalize_username(raw)
     with session_scope() as db:
-        alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
-        if alias:
-            return f"【{alias.note}】"
+        note = find_alias_note(db, clean_username)
+        if note:
+            return f"【{note}】"
     return f"@{raw}"
+
+
+def find_alias_note(db: Session, username: str) -> str:
+    clean_username = normalize_username(username)
+    alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
+    if alias:
+        return alias.note
+    compact = compact_alias_key(clean_username)
+    if not compact:
+        return ""
+    for candidate in db.query(UserAlias).all():
+        if compact_alias_key(candidate.username) == compact:
+            return candidate.note
+    return ""
+
+
+def compact_alias_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_username(value).lower())
 
 
 def update_alias_last_spoke(username: str, spoke_at: object) -> None:
