@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tuite TG</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20260520-2">
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20260520-3">
   </head>
   <body>
     <div class="app-layout">
@@ -224,6 +224,60 @@
         if (form) {
           form.requestSubmit();
         }
+      });
+
+      document.addEventListener("dblclick", function (event) {
+        if (event.target.closest("button, input, textarea, select, form")) {
+          return;
+        }
+        const row = event.target.closest("[data-alias-row]");
+        if (!row) {
+          return;
+        }
+        document.querySelectorAll("[data-alias-row].is-editing").forEach((item) => {
+          if (item !== row) {
+            item.classList.remove("is-editing");
+          }
+        });
+        row.classList.add("is-editing");
+        const fieldName = event.target.closest("code") ? "username" : "note";
+        const input = row.querySelector(`.alias-edit-form input[name="${fieldName}"]`);
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      });
+
+      document.addEventListener("click", function (event) {
+        const button = event.target.closest("[data-alias-cancel]");
+        if (!button) {
+          return;
+        }
+        const row = button.closest("[data-alias-row]");
+        const form = button.closest("form");
+        if (form) {
+          form.reset();
+          dirtyForms.delete(form);
+        }
+        if (row) {
+          row.classList.remove("is-editing");
+        }
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key !== "Escape") {
+          return;
+        }
+        const row = event.target.closest("[data-alias-row].is-editing");
+        if (!row) {
+          return;
+        }
+        const form = row.querySelector(".alias-edit-form");
+        if (form) {
+          form.reset();
+          dirtyForms.delete(form);
+        }
+        row.classList.remove("is-editing");
       });
 
       let logsPanel = document.querySelector(".logs[data-latest-log-id]");

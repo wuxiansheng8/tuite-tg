@@ -354,6 +354,7 @@
       <p>填写用户名和备注；命中该用户发帖时，TG 推送会显示“备注 @用户名”。</p>
     </div>
     <div class="actions">
+      <span class="alias-count" data-refresh-key="alias-count">已备注用户 {{ aliases | length }} 个</span>
       <a class="button-link secondary" href="/aliases/template">下载模板</a>
       <a class="button-link" href="/aliases/export">导出备注</a>
       <form class="inline-upload-form" method="post" action="/aliases/import" enctype="multipart/form-data" data-confirm="确认导入用户备注吗？同名用户名会更新备注，不会删除现有备注。">
@@ -375,13 +376,23 @@
   </form>
   <div class="panel alias-list" data-refresh-key="alias-list">
     {% for alias in aliases %}
-      <div class="alias-row">
+      <div class="alias-row" data-alias-row>
         <div class="alias-main">
           <strong>{{ alias.note }}</strong>
           <code>@{{ alias.username }}</code>
           <span>发言：{{ alias.last_spoke_at | beijing_time }}</span>
         </div>
-        <form method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
+        <form class="alias-edit-form" method="post" action="/aliases/{{ alias.id }}/update" data-pending-text="保存中...">
+          <label>用户名
+            <input name="username" value="@{{ alias.username }}" required autocomplete="off">
+          </label>
+          <label>备注
+            <input name="note" value="{{ alias.note }}" required autocomplete="off">
+          </label>
+          <button type="submit">保存</button>
+          <button type="button" class="secondary" data-alias-cancel>取消</button>
+        </form>
+        <form class="alias-delete-form" method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
           <button type="submit" class="danger">删除</button>
         </form>
       </div>

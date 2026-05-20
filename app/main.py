@@ -679,6 +679,39 @@ async def delete_alias(
     return RedirectResponse("/#aliases", status_code=303)
 
 
+@app.post("/aliases/{alias_id}/update")
+async def update_alias(
+    alias_id: int,
+    username: str = Form(...),
+    note: str = Form(...),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    alias = db.query(UserAlias).filter(UserAlias.id == alias_id).first()
+    if not alias:
+        add_log(db, "ERROR", "用户备注修改失败：记录不存在")
+        return RedirectResponse("/#aliases", status_code=303)
+    clean_username = normalize_username(username)
+    clean_note = note.strip()
+    if not clean_username or not clean_note:
+        add_log(db, "ERROR", "用户备注修改失败：用户名和备注都不能为空")
+        return RedirectResponse("/#aliases", status_code=303)
+    conflict = (
+        db.query(UserAlias)
+        .filter(UserAlias.id != alias.id, UserAlias.username == clean_username)
+        .first()
+    )
+    if conflict:
+        add_log(db, "ERROR", f"用户备注修改失败：@{clean_username} 已存在")
+        return RedirectResponse("/#aliases", status_code=303)
+    old_username = alias.username
+    alias.username = clean_username
+    alias.note = clean_note
+    alias.updated_at = utc_now()
+    add_log(db, "INFO", f"用户备注已修改: @{old_username} -> @{clean_username} / {clean_note}")
+    return RedirectResponse("/#aliases", status_code=303)
+
+
 @app.get("/aliases/template")
 async def download_alias_template(
     _: str = Depends(current_user_from_cookie),

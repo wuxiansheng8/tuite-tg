@@ -718,6 +718,19 @@ summary {
   margin-top: 12px;
 }
 
+.alias-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid #bfe9e5;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--brand-soft);
+  color: #06766f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .alias-row {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(180px, 0.6fr) minmax(120px, 0.4fr) 92px;
@@ -729,8 +742,37 @@ summary {
   border-radius: 8px;
 }
 
+.alias-row[data-alias-row] {
+  cursor: default;
+}
+
+.alias-row.is-editing {
+  background: #f0fbfa;
+  border-color: #9de5dc;
+}
+
 .alias-main {
   display: contents;
+}
+
+.alias-row.is-editing .alias-main,
+.alias-row.is-editing .alias-delete-form,
+.alias-edit-form {
+  display: none;
+}
+
+.alias-row.is-editing .alias-edit-form {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.3fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  width: 100%;
+}
+
+.alias-edit-form button {
+  min-width: 70px;
 }
 
 .alias-main strong,
@@ -1040,6 +1082,11 @@ summary {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
     font-size: 13px;
+  }
+
+  .alias-row.is-editing .alias-edit-form {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
   }
 
   .alias-main {
