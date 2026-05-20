@@ -111,8 +111,6 @@ def format_feed_item(
     elif author_label:
         parts.append(html.escape(author_label))
     if translated_outer:
-        if parts:
-            parts.append("")
         if is_retweet:
             heading = f"转发自{retweet_source}" if retweet_source else "转发"
             parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer))}")
