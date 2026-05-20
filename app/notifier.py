@@ -104,10 +104,12 @@ def format_feed_item(
     quote_source: str = "",
 ) -> str:
     parts = []
-    if author_note and author_username:
-        note = html.escape(f"【{author_note}】")
-        username = html.escape(f"@{author_username}")
-        parts.append(f"<b>{note}</b> {username}")
+    if author_username:
+        note_line = "<b>备注:</b>"
+        if author_note:
+            note_line += f" <b>{html.escape(f'【{author_note}】')}</b>"
+        username = html.escape(author_username)
+        parts.append(f"{note_line}\n<b>用户名:</b> {username}")
     elif author_label:
         parts.append(html.escape(author_label))
     if translated_outer:
