@@ -181,8 +181,8 @@ class Watcher:
             retweet_source, outer_text = extract_retweet_source(outer_text)
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
-            retweet_label = resolve_source_label(retweet_source)
-            quote_label = resolve_source_label(quote_source)
+            retweet_label = resolve_source_label(retweet_source, outer_text)
+            quote_label = resolve_source_label(quote_source, quote_text)
             translated_outer = await maybe_translate_title(outer_text or title)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
@@ -532,15 +532,19 @@ def resolve_alias_note(username: str) -> str:
     return ""
 
 
-def resolve_source_label(source: str) -> str:
+def resolve_source_label(source: str, body_text: str = "") -> str:
     raw = source.strip().lstrip("@")
     if not raw:
         return ""
-    clean_username = normalize_username(raw)
+    candidates = [raw]
+    body_username = extract_username_from_text(body_text)
+    if body_username:
+        candidates.append(body_username)
     with session_scope() as db:
-        note = find_alias_note(db, clean_username)
-        if note:
-            return f"【{note}】"
+        for candidate in candidates:
+            note = find_alias_note(db, candidate)
+            if note:
+                return f"【{note}】"
     return f"@{raw}"
 
 
