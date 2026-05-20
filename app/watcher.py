@@ -180,6 +180,8 @@ class Watcher:
             retweet_source, outer_text = extract_retweet_source(outer_text)
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
+            retweet_label = resolve_source_label(retweet_source)
+            quote_label = resolve_source_label(quote_source)
             translated_outer = await maybe_translate_title(outer_text or title)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
@@ -187,8 +189,8 @@ class Watcher:
                 translated_outer=translated_outer,
                 translated_quote=translated_quote,
                 is_retweet=is_retweet,
-                retweet_source=retweet_source,
-                quote_source=quote_source,
+                retweet_source=retweet_label,
+                quote_source=quote_label,
             )
             try:
                 await send_telegram_with_retry(
@@ -514,6 +516,18 @@ def resolve_author_label(username: str) -> str:
         if alias:
             return f"{alias.note}----@{username}"
     return f"@{username}"
+
+
+def resolve_source_label(source: str) -> str:
+    raw = source.strip().lstrip("@")
+    if not raw:
+        return ""
+    clean_username = normalize_username(raw)
+    with session_scope() as db:
+        alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
+        if alias:
+            return alias.note
+    return f"@{raw}"
 
 
 def update_alias_last_spoke(username: str, spoke_at: object) -> None:
