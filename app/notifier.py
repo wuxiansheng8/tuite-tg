@@ -122,4 +122,4 @@ def format_feed_item(
         heading = f"引用自{quote_source}" if quote_source else "引用"
         parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote))}")
     body = "\n".join(parts)
-    return f"\n{body}" if body else body
+    return f"\u200b\n{body}" if body else body
