@@ -157,7 +157,8 @@ class Watcher:
             link = item.get("link", "")
             username = normalize_username(str(item.get("username") or extract_username_from_item(item)))
             update_alias_last_spoke(username, item.get("published_at"))
-            author_label = resolve_author_label(username)
+            author_note = resolve_alias_note(username)
+            author_label = format_plain_author_label(username, author_note)
             with session_scope() as db:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
@@ -186,6 +187,8 @@ class Watcher:
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
                 author_label=author_label,
+                author_note=author_note,
+                author_username=username,
                 translated_outer=translated_outer,
                 translated_quote=translated_quote,
                 is_retweet=is_retweet,
@@ -509,13 +512,26 @@ def resolve_list_rsshub(db: Session, watch_list: WatchList) -> RsshubInstance | 
 
 
 def resolve_author_label(username: str) -> str:
+    return format_plain_author_label(username, resolve_alias_note(username))
+
+
+def format_plain_author_label(username: str, note: str) -> str:
     if not username:
         return ""
-    with session_scope() as db:
-        alias = db.query(UserAlias).filter(UserAlias.username == username).first()
-        if alias:
-            return f"{alias.note}----@{username}"
+    if note:
+        return f"【{note}】 @{username}"
     return f"@{username}"
+
+
+def resolve_alias_note(username: str) -> str:
+    clean_username = normalize_username(username)
+    if not clean_username:
+        return ""
+    with session_scope() as db:
+        alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
+        if alias:
+            return alias.note
+    return ""
 
 
 def resolve_source_label(source: str) -> str:
@@ -526,7 +542,7 @@ def resolve_source_label(source: str) -> str:
     with session_scope() as db:
         alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
         if alias:
-            return alias.note
+            return f"【{alias.note}】"
     return f"@{raw}"
 
 

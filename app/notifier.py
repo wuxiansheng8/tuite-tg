@@ -95,6 +95,8 @@ def format_alert(title: str, body: str, detail: Optional[str] = None) -> str:
 
 def format_feed_item(
     author_label: str = "",
+    author_note: str = "",
+    author_username: str = "",
     translated_outer: str = "",
     translated_quote: str = "",
     is_retweet: bool = False,
@@ -102,7 +104,11 @@ def format_feed_item(
     quote_source: str = "",
 ) -> str:
     parts = []
-    if author_label:
+    if author_note and author_username:
+        note = html.escape(f"【{author_note}】")
+        username = html.escape(f"@{author_username}")
+        parts.append(f"<b>{note}</b> {username}")
+    elif author_label:
         parts.append(html.escape(author_label))
     if translated_outer:
         if parts:
