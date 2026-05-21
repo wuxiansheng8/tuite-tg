@@ -181,8 +181,9 @@ class Watcher:
             retweet_source, outer_text = extract_retweet_source(outer_text)
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
-            retweet_label = resolve_source_label(retweet_source, outer_text)
-            quote_label = resolve_source_label(quote_source, quote_text)
+            linked_usernames = extract_linked_usernames(description, exclude={username})
+            retweet_label = resolve_source_label(retweet_source, outer_text, linked_usernames)
+            quote_label = resolve_source_label(quote_source, quote_text, linked_usernames)
             translated_outer = await maybe_translate_title(outer_text or title)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
@@ -532,7 +533,11 @@ def resolve_alias_note(username: str) -> str:
     return ""
 
 
-def resolve_source_label(source: str, body_text: str = "") -> str:
+def resolve_source_label(
+    source: str,
+    body_text: str = "",
+    linked_usernames: list[str] | None = None,
+) -> str:
     raw = source.strip().lstrip("@")
     if not raw:
         return ""
@@ -540,12 +545,35 @@ def resolve_source_label(source: str, body_text: str = "") -> str:
     body_username = extract_username_from_text(body_text)
     if body_username:
         candidates.append(body_username)
+    candidates.extend(linked_usernames or [])
     with session_scope() as db:
-        for candidate in candidates:
+        for candidate in dedupe_preserve_order(candidates):
             note = find_alias_note(db, candidate)
             if note:
                 return f"【{note}】"
     return f"@{raw}"
+
+
+def extract_linked_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
+    exclude = {normalize_username(item) for item in (exclude or set()) if item}
+    usernames: list[str] = []
+    for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>]+)/status/\d+", value, re.I):
+        username = normalize_username(match.group(1))
+        if username and username not in exclude and username not in {"i", "intent"}:
+            usernames.append(username)
+    return dedupe_preserve_order(usernames)
+
+
+def dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    results: list[str] = []
+    for value in values:
+        clean = normalize_username(str(value))
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        results.append(clean)
+    return results
 
 
 def find_alias_note(db: Session, username: str) -> str:
