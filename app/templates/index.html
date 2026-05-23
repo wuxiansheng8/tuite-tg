@@ -507,6 +507,9 @@
     <label>失败冷却分钟
       <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
     </label>
+    <label class="span-2">RSSHub 抓取参数
+      <input name="rsshub_route_params" value="{{ settings.rsshub_route_params }}" placeholder="count=100&includeRts=true&showQuotedInTitle=true">
+    </label>
     <label class="span-2">Apprise URLs
       <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
     </label>

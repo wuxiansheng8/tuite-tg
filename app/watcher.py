@@ -6,7 +6,7 @@ import random
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 import feedparser
 import httpx
@@ -26,6 +26,9 @@ from .database import (
 )
 from .notifier import format_alert, format_feed_item, send_apprise, send_telegram, split_rsshub_description
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
+
+
+DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true"
 
 
 class Watcher:
@@ -149,6 +152,7 @@ class Watcher:
         bootstrap: bool,
     ) -> None:
         bot_token, chat_id, apprise_urls = read_notify_settings()
+        forward_mode = read_text_setting("translate_forward_mode", "translated_only")
         for item in reversed(items):
             item_id = normalize_item_id(item)
             candidate_ids = candidate_item_ids(item)
@@ -163,17 +167,18 @@ class Watcher:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
                     continue
-                seen = SeenItem(
-                    item_id=item_id,
-                    list_id=watch_list["list_id"],
-                    token_id=token["id"],
-                    title=title,
-                    link=link,
-                    forwarded_at=None if bootstrap else utc_now(),
-                )
-                db.add(seen)
                 if bootstrap:
-                    add_log(db, "INFO", f"首次启动记录历史推文: {item_id}")
+                    db.add(
+                        SeenItem(
+                            item_id=item_id,
+                            list_id=watch_list["list_id"],
+                            token_id=token["id"],
+                            title=title,
+                            link=link,
+                            forwarded_at=None,
+                        )
+                    )
+                    add_log(db, "INFO", f"首次启动记录历史推文，不推送: {item_id}")
                     continue
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
@@ -184,14 +189,17 @@ class Watcher:
             linked_usernames = extract_linked_usernames(description, exclude={username})
             retweet_label = resolve_source_label(retweet_source, outer_text, linked_usernames)
             quote_label = resolve_source_label(quote_source, quote_text, linked_usernames)
-            translated_outer = await maybe_translate_title(outer_text or title)
+            original_outer = outer_text or title
+            translated_outer = await maybe_translate_title(original_outer)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
+            display_outer = compose_forward_text(original_outer, translated_outer, forward_mode)
+            display_quote = compose_forward_text(quote_text, translated_quote, forward_mode) if quote_text else ""
             message = format_feed_item(
                 author_label=author_label,
                 author_note=author_note,
                 author_username=username,
-                translated_outer=translated_outer,
-                translated_quote=translated_quote,
+                translated_outer=display_outer,
+                translated_quote=display_quote,
                 is_retweet=is_retweet,
                 retweet_source=retweet_label,
                 quote_source=quote_label,
@@ -206,6 +214,16 @@ class Watcher:
                     button_url=link,
                 )
                 with session_scope() as db:
+                    db.add(
+                        SeenItem(
+                            item_id=item_id,
+                            list_id=watch_list["list_id"],
+                            token_id=token["id"],
+                            title=title,
+                            link=link,
+                            forwarded_at=utc_now(),
+                        )
+                    )
                     add_log(db, "INFO", f"TG 推送成功: {item_id}")
                 if apprise_urls:
                     prefix = f"{author_label}\n" if author_label else ""
@@ -243,8 +261,8 @@ class Watcher:
 
 
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
-    base = token["rsshub_url"].rstrip("/") + "/"
-    url = urljoin(base, f"twitter/list/{watch_list['list_id']}")
+    route_params = read_text_setting("rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
+    url = build_rsshub_list_url(token["rsshub_url"], watch_list["list_id"], route_params)
     retry_statuses = {502, 503, 504}
     last_resp: httpx.Response | None = None
     async with httpx.AsyncClient(timeout=35.0) as client:
@@ -287,6 +305,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "published_at": parse_entry_datetime(entry),
             }
         )
+    log_rsshub_feed_sample(token, watch_list, entries, route_params)
     return entries
 
 
@@ -468,6 +487,56 @@ def read_int_setting(key: str, default: int) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+def read_text_setting(key: str, default: str = "") -> str:
+    with session_scope() as db:
+        return get_setting(db, key, default)
+
+
+def normalize_rsshub_route_params(value: str) -> str:
+    return (value or "").strip().lstrip("/?")
+
+
+def build_rsshub_list_url(base_url: str, list_id: str, route_params: str = "") -> str:
+    base = base_url.rstrip("/") + "/"
+    clean_params = normalize_rsshub_route_params(route_params)
+    path = f"twitter/list/{list_id}"
+    if clean_params:
+        encoded_params = quote(clean_params, safe="=&%._~-")
+        path = f"{path}/{encoded_params}"
+    return urljoin(base, path)
+
+
+def log_rsshub_feed_sample(
+    token: dict,
+    watch_list: dict,
+    entries: list[dict],
+    route_params: str,
+) -> None:
+    sample = []
+    for item in entries[:5]:
+        item_id = normalize_item_id(item)
+        title = re.sub(r"\s+", " ", str(item.get("title") or "")).strip()
+        sample.append(f"{item_id} {title[:80]}")
+    summary = " | ".join(sample) if sample else "空"
+    params = normalize_rsshub_route_params(route_params) or "默认"
+    with session_scope() as db:
+        add_log(
+            db,
+            "INFO",
+            f"{token['name']} / List {watch_list['list_id']} RSSHub 返回 {len(entries)} 条，参数 {params}，最新样本：{summary}",
+        )
+
+
+def compose_forward_text(original: str, translated: str, forward_mode: str) -> str:
+    original = (original or "").strip()
+    translated = (translated or "").strip()
+    if forward_mode == "original_and_translation" and translated:
+        if original and original != translated:
+            return f"原文：\n{original}\n\n中文：\n{translated}"
+        return translated
+    return translated or original
 
 
 def parse_datetime(value: str) -> datetime | None:

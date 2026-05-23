@@ -4,7 +4,6 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
-from urllib.parse import urljoin
 
 import feedparser
 import httpx
@@ -49,7 +48,7 @@ from .docker_manager import (
 )
 from .notifier import format_alert, send_telegram
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, query_recent_costs, translate_text
-from .watcher import translate_via_failover, watcher
+from .watcher import DEFAULT_RSSHUB_ROUTE_PARAMS, build_rsshub_list_url, translate_via_failover, watcher
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.dirname(BASE_DIR)
@@ -186,6 +185,7 @@ def ensure_defaults() -> None:
             "apprise_urls": os.getenv("APPRISE_URLS", ""),
             "global_poll_seconds": os.getenv("GLOBAL_POLL_SECONDS", "5"),
             "failure_cooldown_minutes": os.getenv("FAILURE_COOLDOWN_MINUTES", "10"),
+            "rsshub_route_params": os.getenv("RSSHUB_ROUTE_PARAMS", DEFAULT_RSSHUB_ROUTE_PARAMS),
         }
         for key, value in defaults.items():
             if not get_setting(db, key, ""):
@@ -257,6 +257,7 @@ async def index(
         "apprise_urls": get_setting(db, "apprise_urls", ""),
         "global_poll_seconds": get_setting(db, "global_poll_seconds", "5"),
         "failure_cooldown_minutes": get_setting(db, "failure_cooldown_minutes", "10"),
+        "rsshub_route_params": get_setting(db, "rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS),
         "translate_enabled": get_setting(db, "translate_enabled", "0"),
         "translate_model_primary": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
         "translate_api_key_primary": get_setting(db, "translate_api_key_primary", ""),
@@ -350,6 +351,7 @@ async def save_settings(
     apprise_urls: str = Form(""),
     global_poll_seconds: int = Form(5),
     failure_cooldown_minutes: int = Form(10),
+    rsshub_route_params: str = Form(DEFAULT_RSSHUB_ROUTE_PARAMS),
     translate_enabled: str = Form(""),
     translate_model_primary: str = Form("gpt-4.1-mini"),
     translate_api_key_primary: str = Form(""),
@@ -366,6 +368,7 @@ async def save_settings(
     set_setting(db, "apprise_urls", apprise_urls.strip())
     set_setting(db, "global_poll_seconds", str(max(1, global_poll_seconds)))
     set_setting(db, "failure_cooldown_minutes", str(max(1, failure_cooldown_minutes)))
+    set_setting(db, "rsshub_route_params", rsshub_route_params.strip() or DEFAULT_RSSHUB_ROUTE_PARAMS)
     set_setting(db, "translate_enabled", "1" if translate_enabled == "on" else "0")
     set_setting(db, "translate_model_primary", translate_model_primary.strip())
     set_setting(db, "translate_api_key_primary", translate_api_key_primary.strip())
@@ -385,6 +388,7 @@ async def save_general_settings(
     apprise_urls: str = Form(""),
     global_poll_seconds: int = Form(5),
     failure_cooldown_minutes: int = Form(10),
+    rsshub_route_params: str = Form(DEFAULT_RSSHUB_ROUTE_PARAMS),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
@@ -393,6 +397,7 @@ async def save_general_settings(
     set_setting(db, "apprise_urls", apprise_urls.strip())
     set_setting(db, "global_poll_seconds", str(max(1, global_poll_seconds)))
     set_setting(db, "failure_cooldown_minutes", str(max(1, failure_cooldown_minutes)))
+    set_setting(db, "rsshub_route_params", rsshub_route_params.strip() or DEFAULT_RSSHUB_ROUTE_PARAMS)
     add_log(db, "INFO", "基础系统配置已保存")
     return RedirectResponse("/#settings", status_code=303)
 
@@ -1050,7 +1055,8 @@ async def test_rsshub(
         add_log(db, "ERROR", f"{item.name} RSSHub 测试失败：没有启用的 List")
         return RedirectResponse("/#rsshub", status_code=303)
 
-    ok, message = await run_rsshub_real_fetch_test(item.internal_url, watch_list.list_id)
+    route_params = get_setting(db, "rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
+    ok, message = await run_rsshub_real_fetch_test(item.internal_url, watch_list.list_id, route_params)
     if not ok and item.container_id:
         log_summary = summarize_rsshub_logs(container_logs(item.container_id))
         if log_summary:
@@ -1365,8 +1371,12 @@ def sanitize_container_name(value: str) -> str:
     return value.strip("-._")
 
 
-async def run_rsshub_real_fetch_test(base_url: str, list_id: str) -> tuple[bool, str]:
-    url = urljoin(base_url.rstrip("/") + "/", f"twitter/list/{list_id}")
+async def run_rsshub_real_fetch_test(
+    base_url: str,
+    list_id: str,
+    route_params: str = DEFAULT_RSSHUB_ROUTE_PARAMS,
+) -> tuple[bool, str]:
+    url = build_rsshub_list_url(base_url, list_id, route_params)
     try:
         async with httpx.AsyncClient(timeout=35.0) as client:
             resp = await client.get(url)
@@ -1377,7 +1387,13 @@ async def run_rsshub_real_fetch_test(base_url: str, list_id: str) -> tuple[bool,
     parsed = feedparser.parse(resp.text)
     if parsed.bozo:
         return False, f"RSS 解析失败：{parsed.bozo_exception}"
-    return True, f"测试成功，List {list_id} 返回 {len(parsed.entries)} 条。"
+    sample = []
+    for entry in parsed.entries[:5]:
+        title = " ".join(str(entry.get("title", "")).split())
+        link = str(entry.get("link", ""))
+        sample.append(f"{title[:80]} {link}".strip())
+    detail = " | ".join(sample) if sample else "空"
+    return True, f"测试成功，List {list_id} 返回 {len(parsed.entries)} 条。RSSHub 参数：{route_params or '默认'}。最新样本：{detail}"
 
 
 def summarize_rsshub_logs(logs: str) -> str:
