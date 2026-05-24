@@ -451,7 +451,7 @@ async def translate_via_failover(text: str, prefer_active: bool = False) -> tupl
 
 
 async def maybe_translate_title(text: str) -> str:
-    translated, _ = await translate_via_failover(text)
+    translated, _ = await translate_via_failover(text, prefer_active=True)
     return translated
 
 

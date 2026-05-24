@@ -103,6 +103,13 @@ def format_feed_item(
     retweet_source: str = "",
     quote_source: str = "",
 ) -> str:
+    if translated_quote:
+        outer_limit = 1700
+        quote_limit = 1700
+    else:
+        outer_limit = 3500
+        quote_limit = 1700
+
     parts = []
     if author_username:
         note_line = "<b>备注:</b>"
@@ -115,13 +122,13 @@ def format_feed_item(
     if translated_outer:
         if is_retweet:
             heading = f"转发自{retweet_source}" if retweet_source else "转发"
-            parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer))}")
+            parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer, limit=outer_limit))}")
         else:
-            parts.append(html.escape(clip_text(translated_outer)))
+            parts.append(html.escape(clip_text(translated_outer, limit=outer_limit)))
     if translated_quote:
         if parts:
             parts.append("")
         heading = f"引用自{quote_source}" if quote_source else "引用"
-        parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote))}")
+        parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote, limit=quote_limit))}")
     body = "\n".join(parts)
     return f"\u200b\n{body}" if body else body

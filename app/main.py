@@ -1144,6 +1144,8 @@ async def delete_rsshub(
                 add_log(db, "INFO", f"RSSHub 容器已删除: {item.name}")
             except DockerManagerError as exc:
                 add_log(db, "ERROR", f"RSSHub 容器删除失败: {exc}")
+        db.query(WatchListBinding).filter(WatchListBinding.rsshub_instance_id == rsshub_id).delete()
+        db.query(WatchList).filter(WatchList.rsshub_instance_id == rsshub_id).update({"rsshub_instance_id": 0})
         db.delete(item)
     return RedirectResponse("/#rsshub", status_code=303)
 
