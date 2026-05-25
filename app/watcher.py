@@ -277,7 +277,7 @@ class Watcher:
 
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     route_params = read_text_setting("rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
-    url = build_rsshub_list_url(token["rsshub_url"], watch_list["list_id"], route_params)
+    url = build_rsshub_home_url(token["rsshub_url"], route_params)
     retry_statuses = {502, 503, 504}
     last_resp: httpx.Response | None = None
     async with httpx.AsyncClient(timeout=35.0) as client:
@@ -521,10 +521,10 @@ def normalize_rsshub_route_params(value: str) -> str:
     return (value or "").strip().lstrip("/?")
 
 
-def build_rsshub_list_url(base_url: str, list_id: str, route_params: str = "") -> str:
+def build_rsshub_home_url(base_url: str, route_params: str = "") -> str:
     base = base_url.rstrip("/") + "/"
     clean_params = normalize_rsshub_route_params(route_params)
-    path = f"twitter/list/{list_id}"
+    path = "twitter/home"
     if clean_params:
         encoded_params = quote(clean_params, safe="=&%._~-")
         path = f"{path}/{encoded_params}"

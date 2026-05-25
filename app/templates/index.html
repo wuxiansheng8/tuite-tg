@@ -7,7 +7,7 @@
       <strong class="{{ 'ok-text' if stats.enabled_tasks == stats.healthy_lists else 'warn-text' }}">
         {{ stats.healthy_lists }} / {{ stats.enabled_tasks }} 抓取正常
       </strong>
-      <p>总 List：{{ stats.total_lists }} · 总任务：{{ stats.total_tasks }} · 未检测：{{ stats.unchecked_lists }}</p>
+      <p>总账号：{{ stats.total_lists }} · 总任务：{{ stats.total_tasks }} · 未检测：{{ stats.unchecked_lists }}</p>
     </article>
     <article class="metric-card">
       <span>最近扫描</span>
@@ -27,9 +27,9 @@
       <p>网页管理的容器数量</p>
     </article>
     <article class="metric-card">
-      <span>List 监控</span>
+      <span>账号监控</span>
       <strong>{{ stats.enabled_lists }} / {{ stats.total_lists }}</strong>
-      <p>启用中的列表数量</p>
+      <p>启用中的账号数量</p>
     </article>
   </div>
   <article class="panel stability-panel" data-refresh-key="dashboard-stability">
@@ -87,7 +87,7 @@
   <div class="section-head">
     <div>
       <h2>RSSHub 容器</h2>
-      <p>新增后会创建 RSSHub 容器；每个监控 List 可以选择使用哪个 RSSHub 抓取。</p>
+      <p>新增后会创建 RSSHub 容器；每个监控账号可以选择使用哪个 RSSHub 抓取。</p>
     </div>
     <form method="post" action="/rsshub/discover">
       <button type="submit" class="secondary">查询当前 RSSHub 容器</button>
@@ -209,7 +209,7 @@
   <div class="section-head">
     <div>
       <h2>监控方案</h2>
-      <p>按 List 绑定一个或多个 RSSHub 容器；如果多个 RSSHub 监控同一个 List，系统会按全局轮询秒数在这些任务之间轮流执行。</p>
+      <p>按账号绑定一个或多个 RSSHub 容器；如果多个 RSSHub 监控同一个账号，系统会按全局轮询秒数在这些任务之间轮流执行。</p>
     </div>
   </div>
   <div class="monitor-grid">
@@ -218,7 +218,7 @@
       {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
       {% set list_bindings = bindings_by_list.get(item.id, []) %}
       <div data-refresh-key="monitor-card-{{ item.id }}-status">
-        <h3>{{ item.name or '未命名 List' }}</h3>
+        <h3>{{ item.name or '未命名账号' }}</h3>
         <p>
           {% if not item.last_checked_at and not item.last_success_at and not item.last_error %}
             <span class="badge muted">未检测</span>
@@ -250,7 +250,7 @@
         <form method="post" action="/lists/{{ item.id }}/check">
           <button class="secondary" type="submit">手动检测</button>
         </form>
-        <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
+        <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }}账号：{{ item.name or item.list_id }} 吗？">
           <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
         </form>
         <details class="inline-edit">
@@ -275,7 +275,7 @@
       </div>
     </article>
     {% else %}
-      <div class="panel muted">暂无监控方案。先在“监控名单”添加 List。</div>
+      <div class="panel muted">暂无监控方案。先在“监控名单”添加账号。</div>
     {% endfor %}
   </div>
 </section>
@@ -283,21 +283,21 @@
 <section class="band" id="lists">
   <div class="section-head">
     <div>
-      <h2>监控 List</h2>
-      <p>这里是统一 List 池；每个 List 选择一个 RSSHub 容器抓取，发现新推文后推送 Telegram。</p>
+      <h2>监控账号/主页</h2>
+      <p>这里是统一账号池；每个账号监控其正在关注(Following)的主页时间线，发现新推文后推送 Telegram。</p>
     </div>
   </div>
   <div class="panel list-box">
     <form class="list-form" method="post" action="/lists">
-      <input name="name" placeholder="列表备注">
-      <input name="list_id" placeholder="List URL 或 ID" required>
+      <input name="name" placeholder="账号备注">
+      <input name="list_id" placeholder="X 用户名/主页 ID 或 URL" required>
       <select name="rsshub_instance_id">
         <option value="0">默认 RSSHub</option>
         {% for rsshub in rsshub_instances %}
           <option value="{{ rsshub.id }}">{{ rsshub.name }} - {{ rsshub.internal_url }}</option>
         {% endfor %}
       </select>
-      <button type="submit">添加 List</button>
+      <button type="submit">添加账号</button>
     </form>
     <div class="table" data-refresh-key="lists-table">
       {% for item in lists %}
@@ -316,18 +316,18 @@
           <form method="post" action="/lists/{{ item.id }}/check">
             <button type="submit" class="secondary">检测</button>
           </form>
-          <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
+          <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }}账号：{{ item.name or item.list_id }} 吗？">
             <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
           </form>
-          <form method="post" action="/lists/{{ item.id }}/delete" data-confirm="确认删除 List：{{ item.name or item.list_id }} 吗？">
+          <form method="post" action="/lists/{{ item.id }}/delete" data-confirm="确认删除账号：{{ item.name or item.list_id }} 吗？">
             <button type="submit" class="danger">删除</button>
           </form>
           <details class="span-4 inline-edit">
             <summary>编辑</summary>
             <form class="list-form" method="post" action="/lists">
               <input type="hidden" name="list_row_id" value="{{ item.id }}">
-              <input name="name" value="{{ item.name }}" placeholder="列表备注">
-              <input name="list_id" value="{{ item.list_id }}" required>
+              <input name="name" value="{{ item.name }}" placeholder="账号备注">
+              <input name="list_id" value="{{ item.list_id }}" required placeholder="X 用户名/主页 ID 或 URL">
               <select name="rsshub_instance_id">
                 <option value="0">默认 RSSHub</option>
                 {% for rsshub in rsshub_instances %}
@@ -341,7 +341,7 @@
           </details>
         </div>
       {% else %}
-        <p class="muted">暂无 List。</p>
+        <p class="muted">暂无监控账号。</p>
       {% endfor %}
     </div>
   </div>
@@ -491,7 +491,7 @@
   <div class="section-head">
     <div>
       <h2>系统设置</h2>
-      <p>全局轮询建议 5 秒；系统按启用 List 轮流请求对应 RSSHub 容器。</p>
+      <p>全局轮询建议 5 秒；系统按已启用的监控账号轮流请求对应 RSSHub 容器。</p>
     </div>
   </div>
   <form class="panel settings-grid" method="post" action="/settings/general">

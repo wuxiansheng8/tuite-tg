@@ -48,7 +48,7 @@ from .docker_manager import (
 )
 from .notifier import format_alert, send_telegram
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, query_recent_costs, translate_text
-from .watcher import DEFAULT_RSSHUB_ROUTE_PARAMS, build_rsshub_list_url, translate_via_failover, watcher
+from .watcher import DEFAULT_RSSHUB_ROUTE_PARAMS, build_rsshub_home_url, translate_via_failover, watcher
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.dirname(BASE_DIR)
@@ -1378,7 +1378,7 @@ async def run_rsshub_real_fetch_test(
     list_id: str,
     route_params: str = DEFAULT_RSSHUB_ROUTE_PARAMS,
 ) -> tuple[bool, str]:
-    url = build_rsshub_list_url(base_url, list_id, route_params)
+    url = build_rsshub_home_url(base_url, route_params)
     try:
         async with httpx.AsyncClient(timeout=35.0) as client:
             resp = await client.get(url)
@@ -1402,7 +1402,7 @@ def summarize_rsshub_logs(logs: str) -> str:
     if not logs.strip():
         return ""
     keywords = (
-        "Error in /twitter/list",
+        "Error in /twitter/home",
         "Twitter API error",
         "PROXY_URI",
         "proxy",

@@ -19,8 +19,8 @@
 
         <nav class="side-nav" aria-label="主菜单">
           <a class="active" href="#dashboard" data-title="系统运行看板" data-subtitle="RSSHub 轮询、健康检测与 Telegram 推送后台"><span>▣</span>运行看板</a>
-          <a href="#rsshub" data-title="RSSHub 方案" data-subtitle="配置 RSSHub 容器，并选择每个 List 使用哪个容器抓取"><span>◎</span>RSSHub方案</a>
-          <a href="#monitor-list" data-panels="lists,aliases" data-title="监控名单" data-subtitle="统一配置监控 List 和用户备注，命中后推送到 Telegram"><span>☷</span>监控名单</a>
+          <a href="#rsshub" data-title="RSSHub 方案" data-subtitle="配置 RSSHub 容器，并选择每个账号使用哪个容器抓取"><span>◎</span>RSSHub方案</a>
+          <a href="#monitor-list" data-panels="lists,aliases" data-title="监控名单" data-subtitle="统一配置监控账号和用户备注，命中后推送到 Telegram"><span>☷</span>监控名单</a>
           <a href="#proxies" data-title="代理设置" data-subtitle="统一维护代理池，RSSHub 容器只能选择已配置代理"><span>⇄</span>代理设置</a>
           <a href="#settings" data-title="系统设置" data-subtitle="配置 Telegram、轮询频率和通知扩展"><span>⚙</span>系统设置</a>
           <a href="#logs" data-title="运行日志" data-subtitle="查看最近事件、抓取异常、恢复结果和推送状态"><span>≡</span>运行日志</a>
@@ -63,11 +63,11 @@
         <div class="modal-head">
           <div>
             <h2 id="import-title">导入数据</h2>
-            <p>会覆盖 RSSHub、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
+            <p>会覆盖 RSSHub、正在关注的账号、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
           </div>
           <button type="button" class="ghost" data-close-import>关闭</button>
         </div>
-        <form class="import-form" method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？RSSHub、List、用户备注、系统配置和去重记录都会被替换。">
+        <form class="import-form" method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？RSSHub、正在关注的账号、用户备注、系统配置和去重记录都会被替换。">
           <label>备份文件
             <input name="backup_file" type="file" accept="application/json,.json" required>
           </label>
