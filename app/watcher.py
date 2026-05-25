@@ -182,13 +182,13 @@ class Watcher:
                     continue
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
-            outer_text, quote_text = split_rsshub_description(description)
+            outer_text, quote_text, quote_html = split_rsshub_description(description)
             retweet_source, outer_text = extract_retweet_source(outer_text)
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
-            linked_usernames = extract_linked_usernames(description, exclude={username})
-            retweet_label = resolve_source_label(retweet_source, outer_text, linked_usernames)
-            quote_label = resolve_source_label(quote_source, quote_text, linked_usernames)
+            retweet_label = resolve_source_label(retweet_source)
+            quote_linked_usernames = extract_linked_usernames(quote_html, exclude={username}) if quote_html else []
+            quote_label = resolve_source_label(quote_source, quote_text, quote_linked_usernames)
             original_outer = outer_text or title
             translated_outer = await maybe_translate_title(original_outer)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
@@ -461,9 +461,9 @@ def is_retweet_text(value: str) -> bool:
 
 def extract_retweet_source(value: str) -> tuple[str, str]:
     text = value.strip()
-    match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s*\n+(.*)$", text)
+    match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20}):?\s+(.*)$", text)
     if not match:
-        match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s+(.*)$", text)
+        match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s*\n+(.*)$", text)
     if not match:
         return "", value
     return match.group(1), match.group(2).strip()
@@ -611,6 +611,9 @@ def resolve_source_label(
     if not raw:
         return ""
     candidates = [raw]
+    username_in_raw = extract_username_from_text(raw)
+    if username_in_raw:
+        candidates.append(username_in_raw)
     body_username = extract_username_from_text(body_text)
     if body_username:
         candidates.append(body_username)
@@ -619,7 +622,7 @@ def resolve_source_label(
         for candidate in dedupe_preserve_order(candidates):
             note = find_alias_note(db, candidate)
             if note:
-                return f"【{note}】"
+                return f"【{note}】 @{candidate}"
     return f"@{raw}"
 
 
