@@ -85,7 +85,7 @@ def create_rsshub_container(
 ) -> ContainerInfo:
     ensure_image_available(RSSHUB_IMAGE)
     env = [
-        "CACHE_EXPIRE=30",
+        "CACHE_EXPIRE=20",
         f"TWITTER_AUTH_TOKEN={twitter_auth_token}",
         f"TWITTER_THIRD_PARTY_API={third_party_api}",
         f"PROXY_URI={proxy_uri}",
