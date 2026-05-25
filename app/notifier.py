@@ -53,6 +53,7 @@ async def send_telegram(
     text: str,
     button_text: str = "",
     button_url: str = "",
+    disable_web_page_preview: bool = True,
 ) -> None:
     if not bot_token or not chat_id:
         raise NotifyError("Telegram bot token 或 chat id 未配置")
@@ -61,7 +62,7 @@ async def send_telegram(
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": disable_web_page_preview,
     }
     if button_text and button_url:
         payload["reply_markup"] = {

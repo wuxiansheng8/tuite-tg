@@ -48,7 +48,7 @@ def _headers(endpoint: OpenAIEndpoint) -> dict[str, str]:
 
 
 async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
-    system_prompt = "你是一个翻译助手。把用户提供的推文内容翻译成简体中文。只输出翻译结果，不要解释，不要加引号。如果原文已经是中文，就直接返回原文。"
+    system_prompt = "你是一个翻译助手。把用户提供的推文内容翻译成简体中文。只输出翻译结果，不要解释，不要加引号。如果原文已经是中文，就直接返回原文。注意：保留推文中的 @用户名、#标签 和 URL 链接，不要翻译或改动它们。"
     payload = {
         "model": endpoint.model,
         "messages": [

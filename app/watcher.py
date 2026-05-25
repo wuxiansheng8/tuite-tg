@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import random
 import re
 from datetime import datetime, timedelta, timezone
@@ -194,6 +195,12 @@ class Watcher:
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             display_outer = compose_forward_text(original_outer, translated_outer, forward_mode)
             display_quote = compose_forward_text(quote_text, translated_quote, forward_mode) if quote_text else ""
+            
+            with session_scope() as db:
+                display_outer = resolve_mentions_in_text(db, display_outer)
+                if display_quote:
+                    display_quote = resolve_mentions_in_text(db, display_quote)
+
             message = format_feed_item(
                 author_label=author_label,
                 author_note=author_note,
@@ -204,6 +211,13 @@ class Watcher:
                 retweet_source=retweet_label,
                 quote_source=quote_label,
             )
+
+            image_url = extract_first_image(description)
+            disable_preview = True
+            if image_url:
+                disable_preview = False
+                message = f'<a href="{html.escape(image_url)}">&#8203;</a>' + message
+
             try:
                 await send_telegram_with_retry(
                     bot_token,
@@ -212,6 +226,7 @@ class Watcher:
                     f"推文 {item_id}",
                     button_text="查看原文",
                     button_url=link,
+                    disable_web_page_preview=disable_preview,
                 )
                 with session_scope() as db:
                     db.add(
@@ -360,11 +375,19 @@ async def send_telegram_with_retry(
     label: str,
     button_text: str = "",
     button_url: str = "",
+    disable_web_page_preview: bool = True,
 ) -> None:
     last_error: Exception | None = None
     for attempt in range(1, 4):
         try:
-            await send_telegram(bot_token, chat_id, message, button_text=button_text, button_url=button_url)
+            await send_telegram(
+                bot_token,
+                chat_id,
+                message,
+                button_text=button_text,
+                button_url=button_url,
+                disable_web_page_preview=disable_web_page_preview,
+            )
             if attempt > 1:
                 with session_scope() as db:
                     add_log(db, "INFO", f"{label} 第 {attempt} 次重试发送成功")
@@ -796,6 +819,29 @@ def elapsed_since(then: datetime, now: datetime) -> timedelta:
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     return now - then
+
+
+def extract_first_image(html_content: str) -> str:
+    if not html_content:
+        return ""
+    for match in re.finditer(r'(?i)<img\b[^>]*\bsrc=["\']([^"\']+)["\']', html_content):
+        url = match.group(1)
+        if "emoji" in url or "twemoji" in url or "tracking" in url:
+            continue
+        return url
+    return ""
+
+
+def resolve_mentions_in_text(db: Session, text: str) -> str:
+    if not text:
+        return text
+    def replace_mention(match: re.Match) -> str:
+        handle = match.group(1)
+        note = find_alias_note(db, handle)
+        if note:
+            return f"【{note}】 @{handle}"
+        return match.group(0)
+    return re.sub(r"@([A-Za-z0-9_]{1,20})\b", replace_mention, text)
 
 
 watcher = Watcher()
