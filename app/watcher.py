@@ -30,6 +30,7 @@ from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint
 
 
 DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true"
+RSSHUB_FOLLOWING_ROUTE = "twitter/home_latest"
 
 
 class Watcher:
@@ -242,7 +243,7 @@ class Watcher:
                     add_log(db, "INFO", f"TG 推送成功: {item_id}")
                 if apprise_urls:
                     prefix = f"{author_label}\n" if author_label else ""
-                    send_apprise(apprise_urls, "X List 更新", f"{prefix}{title}\n{link}")
+                    send_apprise(apprise_urls, "X 正在关注更新", f"{prefix}{title}\n{link}")
                     with session_scope() as db:
                         add_log(db, "INFO", f"Apprise 推送成功: {item_id}")
             except Exception as exc:
@@ -252,7 +253,7 @@ class Watcher:
     async def handle_source_failure(self, token: dict, watch_list: dict, error: str) -> None:
         bot_token, chat_id, _ = read_notify_settings()
         title = "X/RSSHub 抓取异常"
-        body = f"{token['name']} / List {watch_list['list_id']} 抓取失败。"
+        body = f"{token['name']} / 正在关注时间线 {watch_list['list_id']} 抓取失败。"
         should_alert = True
         with session_scope() as db:
             row = db.query(WatchListBinding).filter(WatchListBinding.id == token["binding_id"]).first()
@@ -341,12 +342,12 @@ async def mark_binding_success(source: dict, watch_list: dict, item_count: int) 
             parent.last_error = ""
             parent.last_checked_at = utc_now()
             parent.last_success_at = utc_now()
-        add_log(db, "INFO", f"{source['name']} / List {watch_list['list_id']} 检查完成，返回 {item_count} 条")
+        add_log(db, "INFO", f"{source['name']} / 正在关注时间线 {watch_list['list_id']} 检查完成，返回 {item_count} 条")
     if recovered:
         await notify_safely(
             bot_token,
             chat_id,
-            format_alert("List 抓取已恢复", f"{source['name']} / List {watch_list['list_id']} 已恢复正常。", f"本次返回 {item_count} 条，重复内容也视为抓取正常。"),
+            format_alert("正在关注抓取已恢复", f"{source['name']} / 正在关注时间线 {watch_list['list_id']} 已恢复正常。", f"本次返回 {item_count} 条，重复内容也视为抓取正常。"),
         )
 
 
@@ -357,7 +358,7 @@ def mark_binding_failure(db: Session, binding: WatchListBinding, watch_list: Wat
     watch_list.healthy = False
     watch_list.last_error = error[:2000]
     watch_list.last_checked_at = utc_now()
-    add_log(db, "ERROR", f"List {watch_list.list_id} / RSSHub {binding.rsshub_instance_id} 抓取失败: {error}")
+    add_log(db, "ERROR", f"正在关注时间线 {watch_list.list_id} / RSSHub {binding.rsshub_instance_id} 抓取失败: {error}")
 
 
 async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
@@ -524,7 +525,7 @@ def normalize_rsshub_route_params(value: str) -> str:
 def build_rsshub_home_url(base_url: str, route_params: str = "") -> str:
     base = base_url.rstrip("/") + "/"
     clean_params = normalize_rsshub_route_params(route_params)
-    path = "twitter/home"
+    path = RSSHUB_FOLLOWING_ROUTE
     if clean_params:
         encoded_params = quote(clean_params, safe="=&%._~-")
         path = f"{path}/{encoded_params}"
@@ -548,7 +549,7 @@ def log_rsshub_feed_sample(
         add_log(
             db,
             "INFO",
-            f"{token['name']} / List {watch_list['list_id']} RSSHub 返回 {len(entries)} 条，参数 {params}，最新样本：{summary}",
+            f"{token['name']} / 正在关注时间线 {watch_list['list_id']} RSSHub 返回 {len(entries)} 条，路由 {RSSHUB_FOLLOWING_ROUTE}，参数 {params}，最新样本：{summary}",
         )
 
 

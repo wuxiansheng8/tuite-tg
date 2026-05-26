@@ -1,12 +1,12 @@
 # Tuite TG
 
-一个把 RSSHub、X/Twitter List 和 Telegram 报警整合在一起的网页后台。
+一个把 RSSHub、X/Twitter 正在关注时间线和 Telegram 报警整合在一起的网页后台。
 
 ## 设计目标
 
-- 用 RSSHub 把 X/Twitter List 转成 RSS。
-- 支持多个 RSSHub 容器，每个监控 List 可选择独立 RSSHub 抓取。
-- watcher 全局按秒轮询，按启用 List 轮流检查。
+- 用 RSSHub 把 X/Twitter 的“正在关注 / Following”时间线转成 RSS。
+- 支持多个 RSSHub 容器，每个监控账号可选择独立 RSSHub 抓取。
+- watcher 全局按秒轮询，按启用账号轮流检查。
 - RSSHub 抓取失败时记录异常，并按冷却时间发送 Telegram 报警。
 
 ## 服务器部署
@@ -95,13 +95,19 @@ rsshub10 -> http://rsshub10:1200 -> auth_token10 + proxy10
 ```
 
 `docker-compose.yml` 只保留主程序，不再固定写死 `rsshub1`、`rsshub2`。这样重启服务后，不会把网页里删除或改名的 RSSHub 容器重新拉回来。
-RSSHub 当前文档里 Twitter List 路由标注需要 `TWITTER_AUTH_TOKEN` 和 `TWITTER_THIRD_PARTY_API`，所以这些值也在网页新增/编辑 RSSHub 时填写。
-
-后台里新增监控 List 时：
+RSSHub 当前文档里 Twitter Home latest timeline 路由用于抓取“正在关注 / Following”时间线。项目实际请求的路由是：
 
 ```text
-列表备注：可选
-List URL 或 ID：例如 https://x.com/i/lists/1897123691873624353
+/twitter/home_latest/count=100&includeRts=true&showQuotedInTitle=true
+```
+
+RSSHub 的 Twitter 路由需要 `TWITTER_AUTH_TOKEN`，部分部署还会用到 `TWITTER_THIRD_PARTY_API`，所以这些值也在网页新增/编辑 RSSHub 时填写。
+
+后台里新增监控账号时：
+
+```text
+账号备注：可选
+账号名或标识：例如 5号手机
 RSSHub：选择 rsshub1/rsshub2，默认使用第一个 RSSHub 容器
 ```
 
@@ -111,14 +117,15 @@ RSSHub：选择 rsshub1/rsshub2，默认使用第一个 RSSHub 容器
 
 当 RSSHub 返回 HTTP 错误、RSS 解析失败或其它抓取异常时：
 
-1. Tuite TG 记录该 List 的失败状态。
+1. Tuite TG 记录该账号时间线的失败状态。
 2. 按冷却时间控制 TG 报警频率，避免重复刷屏。
-3. 下一轮仍会继续扫描其它启用 List；单个 List 失败不会拖停整个监控。
+3. 下一轮仍会继续扫描其它启用账号；单个账号失败不会拖停整个监控。
 
 ## 预判风险
 
 - X/Twitter 可能改返回结构、认证要求或风控策略，导致 RSSHub 抓取波动。
-- 5 秒是全局轮询，不建议监控 List 过多时设置过低。
+- “正在关注 / Following”是账号自己的时间线。即使多个账号关注完全一致，X 也可能因账号状态、代理/IP、风控、地区和缓存返回不同数量或排序。
+- 5 秒是全局轮询，不建议监控账号过多时设置过低。
 - RSSHub 的 `CACHE_EXPIRE` 如果太大，watcher 会反复拿缓存；建议 30 秒起步。
 - 代理质量会直接影响 RSSHub 抓取稳定性。
 - RSSHub、代理和 Telegram 凭据保存在本地 SQLite，后台不要裸露公网。

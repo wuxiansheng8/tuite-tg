@@ -48,7 +48,7 @@ from .docker_manager import (
 )
 from .notifier import format_alert, send_telegram
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, query_recent_costs, translate_text
-from .watcher import DEFAULT_RSSHUB_ROUTE_PARAMS, build_rsshub_home_url, translate_via_failover, watcher
+from .watcher import DEFAULT_RSSHUB_ROUTE_PARAMS, RSSHUB_FOLLOWING_ROUTE, build_rsshub_home_url, translate_via_failover, watcher
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.dirname(BASE_DIR)
@@ -1050,9 +1050,9 @@ async def test_rsshub(
     if not watch_list:
         item.last_test_at = utc_now()
         item.last_test_ok = False
-        item.last_test_message = "没有启用的 List，无法模拟真实 RSSHub 抓取。"
+        item.last_test_message = "没有启用的账号，无法模拟真实 RSSHub 抓取。"
         item.updated_at = utc_now()
-        add_log(db, "ERROR", f"{item.name} RSSHub 测试失败：没有启用的 List")
+        add_log(db, "ERROR", f"{item.name} RSSHub 测试失败：没有启用的账号")
         return RedirectResponse("/#rsshub", status_code=303)
 
     route_params = get_setting(db, "rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
@@ -1398,13 +1398,14 @@ async def run_rsshub_real_fetch_test(
         link = str(entry.get("link", ""))
         sample.append(f"{title[:80]} {link}".strip())
     detail = " | ".join(sample) if sample else "空"
-    return True, f"测试成功，List {list_id} 返回 {len(parsed.entries)} 条。RSSHub 参数：{route_params or '默认'}。最新样本：{detail}"
+    return True, f"测试成功，正在关注时间线 {list_id} 返回 {len(parsed.entries)} 条。RSSHub 路由：{RSSHUB_FOLLOWING_ROUTE}。RSSHub 参数：{route_params or '默认'}。最新样本：{detail}"
 
 
 def summarize_rsshub_logs(logs: str) -> str:
     if not logs.strip():
         return ""
     keywords = (
+        "Error in /twitter/home_latest",
         "Error in /twitter/home",
         "Twitter API error",
         "PROXY_URI",
@@ -1662,7 +1663,7 @@ def build_stability_chart(logs: list[Log]) -> dict[str, object]:
         ]
         task_logs = [
             log for log in slot_logs
-            if " / List " in log.message and ("检查完成" in log.message or "抓取失败" in log.message)
+            if (" / 正在关注时间线 " in log.message or " / List " in log.message) and ("检查完成" in log.message or "抓取失败" in log.message)
         ]
         successes = sum(1 for log in task_logs if "检查完成" in log.message)
         failures = sum(1 for log in task_logs if "抓取失败" in log.message)
