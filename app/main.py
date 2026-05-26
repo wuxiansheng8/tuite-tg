@@ -1153,26 +1153,26 @@ async def delete_rsshub(
 @app.post("/lists")
 async def save_list(
     list_row_id: str = Form(""),
-    name: str = Form(""),
-    list_id: str = Form(...),
+    name: str = Form(...),
+    list_id: str = Form(""),
     rsshub_instance_id: int = Form(0),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
-    value = extract_list_id(list_id)
     selected_rsshub_id = resolve_rsshub_choice(db, rsshub_instance_id)
     if rsshub_instance_id and not selected_rsshub_id:
-        add_log(db, "ERROR", "List 保存失败：请选择有效的 RSSHub 容器")
+        add_log(db, "ERROR", "账号保存失败：请选择有效的 RSSHub 容器")
         return RedirectResponse("/#lists", status_code=303)
     old = None
     if list_row_id:
         old = db.query(WatchList).filter(WatchList.id == int(list_row_id), WatchList.token_id == 0).first()
         if not old:
-            add_log(db, "ERROR", "List 保存失败：记录不存在")
+            add_log(db, "ERROR", "账号保存失败：记录不存在")
             return RedirectResponse("/#lists", status_code=303)
     if old:
         old.name = name.strip()
-        old.list_id = value
+        if list_id:
+            old.list_id = extract_list_id(list_id)
         old.rsshub_instance_id = selected_rsshub_id
         old.enabled = True
         old.healthy = True
@@ -1180,7 +1180,10 @@ async def save_list(
         old.last_checked_at = None
         old.last_success_at = None
         ensure_watch_list_binding(db, old, selected_rsshub_id)
+        add_log(db, "INFO", f"账号已更新: {old.name}")
     else:
+        final_list_id = list_id if list_id.strip() else name
+        value = extract_list_id(final_list_id)
         watch_list = WatchList(
             token_id=0,
             rsshub_instance_id=selected_rsshub_id,
@@ -1191,7 +1194,7 @@ async def save_list(
         db.add(watch_list)
         db.flush()
         ensure_watch_list_binding(db, watch_list, selected_rsshub_id)
-    add_log(db, "INFO", f"List 已保存: {value}")
+        add_log(db, "INFO", f"账号已新增: {name} ({value})")
     return RedirectResponse("/#lists", status_code=303)
 
 
@@ -1489,6 +1492,12 @@ def ensure_list_rsshub_bindings(
 def ensure_watch_list_binding(db: Session, watch_list: WatchList, rsshub_instance_id: int) -> None:
     if not rsshub_instance_id:
         return
+    # Disable other bindings for this watch_list
+    db.query(WatchListBinding).filter(
+        WatchListBinding.watch_list_id == watch_list.id,
+        WatchListBinding.rsshub_instance_id != rsshub_instance_id,
+    ).update({"enabled": False})
+
     binding = (
         db.query(WatchListBinding)
         .filter(

@@ -209,14 +209,13 @@
   <div class="section-head">
     <div>
       <h2>监控方案</h2>
-      <p>按账号绑定一个或多个 RSSHub 容器；如果多个 RSSHub 监控同一个账号，系统会按全局轮询秒数在这些任务之间轮流执行。</p>
+      <p>展示每个监控账号的健康状态与所绑定的 RSSHub 容器。如需修改绑定，请在下方的“监控名单”中编辑。</p>
     </div>
   </div>
   <div class="monitor-grid">
     {% for item in lists %}
     <article class="token-card monitor-card">
       {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
-      {% set list_bindings = bindings_by_list.get(item.id, []) %}
       <div data-refresh-key="monitor-card-{{ item.id }}-status">
         <h3>{{ item.name or '未命名账号' }}</h3>
         <p>
@@ -226,18 +225,17 @@
             <span class="badge {{ 'ok' if item.healthy else 'bad' }}">{{ '抓取正常' if item.healthy else '抓取异常' }}</span>
           {% endif %}
           <span class="badge {{ 'ok' if item.enabled else 'muted' }}">{{ '启用' if item.enabled else '停用' }}</span>
-          {% set enabled_binding_count = list_bindings | selectattr('enabled') | list | length %}
-          {% if enabled_binding_count %}
-            {% for binding in list_bindings if binding.enabled %}
-              {% set bound_rsshub = rsshub_by_id.get(binding.rsshub_instance_id) %}
-              <span class="badge muted">{{ bound_rsshub.name if bound_rsshub else ('rsshub-' ~ binding.rsshub_instance_id) }}</span>
-            {% endfor %}
+          {% if item.rsshub_instance_id %}
+            {% set bound_rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
+            <span class="badge muted">{{ bound_rsshub.name if bound_rsshub else ('rsshub-' ~ item.rsshub_instance_id) }}</span>
           {% else %}
-            <span class="badge muted">未绑定 RSSHub</span>
+            <span class="badge muted">使用默认 RSSHub</span>
           {% endif %}
-          <code>{{ item.list_id }}</code>
+          {% if item.list_id and item.list_id != item.name %}
+            <code>{{ item.list_id }}</code>
+          {% endif %}
         </p>
-        <p>当前绑定 {{ enabled_binding_count }} 个 RSSHub；全局共 {{ stats.enabled_tasks }} 个任务，按每 {{ settings.global_poll_seconds }} 秒轮询，完整一圈约 {{ stats.enabled_tasks * (settings.global_poll_seconds | int) }} 秒。</p>
+        <p>该账号已绑定上述 RSSHub 容器进行 1-to-1 专属监控。全局共 {{ stats.enabled_tasks }} 个任务，按每 {{ settings.global_poll_seconds }} 秒轮询，完整一圈约 {{ stats.enabled_tasks * (settings.global_poll_seconds | int) }} 秒。</p>
         <p>
           最后检查：{{ item.last_checked_at | beijing_time }}
           · 最后成功：{{ item.last_success_at | beijing_time }}
@@ -253,25 +251,6 @@
         <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }}账号：{{ item.name or item.list_id }} 吗？">
           <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
         </form>
-        <details class="inline-edit">
-          <summary>绑定 RSSHub</summary>
-          <form class="binding-form" method="post" action="/lists/{{ item.id }}/bindings" data-pending-text="保存中...">
-            {% for rsshub_item in rsshub_instances %}
-              <label class="check">
-                <input
-                  type="checkbox"
-                  name="rsshub_ids"
-                  value="{{ rsshub_item.id }}"
-                  {% if list_bindings | selectattr('rsshub_instance_id', 'equalto', rsshub_item.id) | selectattr('enabled') | list %}checked{% endif %}
-                >
-                <span>{{ rsshub_item.name }}</span>
-              </label>
-            {% endfor %}
-            <div class="actions binding-actions">
-              <button type="submit">保存绑定</button>
-            </div>
-          </form>
-        </details>
       </div>
     </article>
     {% else %}
@@ -289,8 +268,7 @@
   </div>
   <div class="panel list-box">
     <form class="list-form" method="post" action="/lists">
-      <input name="name" placeholder="账号备注">
-      <input name="list_id" placeholder="X 用户名/主页 ID 或 URL" required>
+      <input name="name" placeholder="监控账号名称/备注" required>
       <select name="rsshub_instance_id">
         <option value="0">默认 RSSHub</option>
         {% for rsshub in rsshub_instances %}
@@ -302,8 +280,12 @@
     <div class="table" data-refresh-key="lists-table">
       {% for item in lists %}
         <div class="row">
-          <span>{{ item.name or '未命名' }}</span>
-          <code>{{ item.list_id }}</code>
+          <span>{{ item.name or item.list_id or '未命名' }}</span>
+          {% if item.list_id and item.list_id != item.name %}
+            <code>{{ item.list_id }}</code>
+          {% else %}
+            <span></span>
+          {% endif %}
           {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
           <span>{{ rsshub.name if rsshub else '默认 RSSHub' }}</span>
           <span>
@@ -326,8 +308,7 @@
             <summary>编辑</summary>
             <form class="list-form" method="post" action="/lists">
               <input type="hidden" name="list_row_id" value="{{ item.id }}">
-              <input name="name" value="{{ item.name }}" placeholder="账号备注">
-              <input name="list_id" value="{{ item.list_id }}" required placeholder="X 用户名/主页 ID 或 URL">
+              <input name="name" value="{{ item.name or item.list_id }}" required placeholder="监控账号名称/备注">
               <select name="rsshub_instance_id">
                 <option value="0">默认 RSSHub</option>
                 {% for rsshub in rsshub_instances %}
