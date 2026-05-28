@@ -647,18 +647,43 @@ def resolve_source_label(
         candidates.append(username_in_raw)
     candidates.extend(linked_usernames or [])
     usernames = dedupe_preserve_order(candidates)
+    
+    target_username = next(iter(usernames), "")
+    
+    # 确定显示用的昵称
+    nickname = ""
+    if raw and not source_is_username and raw.lower() != target_username.lower():
+        nickname = raw
+
+    note = ""
+    matched_username = ""
     with session_scope() as db:
         for candidate in usernames:
-            note = find_alias_note(db, candidate)
-            if note:
-                display_name = raw if raw and not source_is_username else f"@{candidate}"
-                return f"【{note}】 {display_name}"
-    fallback = next(iter(usernames), "")
-    if raw:
-        return f"@{raw}" if source_is_username and is_valid_username(raw) else raw
-    if fallback:
-        return f"@{fallback}"
-    return ""
+            n = find_alias_note(db, candidate)
+            if n:
+                note = n
+                matched_username = candidate
+                break
+
+    if note:
+        # 有备注的显示备注+昵称
+        if nickname:
+            return f"【{note}】 {nickname}"
+        elif matched_username:
+            return f"【{note}】 @{matched_username}"
+        elif target_username:
+            return f"【{note}】 @{target_username}"
+        else:
+            return f"【{note}】 {raw}"
+    else:
+        # 没备注的显示昵称+用户名
+        if nickname and target_username:
+            return f"{nickname} @{target_username}"
+        elif target_username:
+            return f"@{target_username}"
+        elif raw:
+            return f"@{raw}" if source_is_username and is_valid_username(raw) else raw
+        return ""
 
 
 def extract_retweet_usernames(
