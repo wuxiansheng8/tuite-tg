@@ -189,10 +189,10 @@ class Watcher:
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
-            retweet_display_name = retweet_source or extract_status_display_name(outer_html, retweet_usernames)
+            retweet_display_name = extract_status_display_name(outer_html, retweet_usernames) or retweet_source
             retweet_label = resolve_source_label(retweet_display_name, linked_usernames=retweet_usernames)
             quote_linked_usernames = extract_status_usernames(quote_html, exclude={username}) if quote_html else []
-            quote_display_name = quote_source or extract_status_display_name(quote_html, quote_linked_usernames)
+            quote_display_name = extract_status_display_name(quote_html, quote_linked_usernames) or quote_source
             quote_label = resolve_source_label(
                 quote_display_name,
                 quote_linked_usernames,
@@ -208,10 +208,12 @@ class Watcher:
                 if display_quote:
                     display_quote = resolve_mentions_in_text(db, display_quote)
 
+            author_nickname = item.get("author_name") or ""
             message = format_feed_item(
                 author_label=author_label,
                 author_note=author_note,
                 author_username=username,
+                author_nickname=author_nickname,
                 translated_outer=display_outer,
                 translated_quote=display_quote,
                 is_retweet=is_retweet,
@@ -224,6 +226,8 @@ class Watcher:
             if image_url:
                 disable_preview = False
                 message = f'<a href="{html.escape(image_url)}">&#8203;</a>' + message
+            elif has_external_link(description):
+                disable_preview = False
 
             try:
                 await send_telegram_with_retry(
@@ -324,6 +328,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "description": description,
                 "link": entry.get("link", ""),
                 "username": extract_username_from_entry(entry),
+                "author_name": extract_display_name_from_entry(entry),
                 "published_at": parse_entry_datetime(entry),
             }
         )
@@ -806,6 +811,23 @@ def extract_username_from_entry(entry) -> str:
     )
 
 
+def extract_display_name_from_entry(entry) -> str:
+    for key in ("author", "authors"):
+        value = entry.get(key)
+        if isinstance(value, str):
+            name = re.sub(r"\s*\(@[A-Za-z0-9_]{1,20}\)", "", value).strip()
+            if name:
+                return name
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    name_val = str(item.get("name") or "")
+                    name = re.sub(r"\s*\(@[A-Za-z0-9_]{1,20}\)", "", name_val).strip()
+                    if name:
+                        return name
+    return ""
+
+
 def extract_username_from_item(item: dict) -> str:
     for value in (str(item.get("link") or ""), str(item.get("id") or "")):
         match = re.search(r"(?:x|twitter)\.com/([^/?#]+)/status/\d+", value)
@@ -917,6 +939,19 @@ def resolve_mentions_in_text(db: Session, text: str) -> str:
             return f"【{note}】 @{handle}"
         return match.group(0)
     return re.sub(r"@([A-Za-z0-9_]{1,20})\b", replace_mention, text)
+
+
+def has_external_link(html_content: str) -> bool:
+    if not html_content:
+        return False
+    for match in re.finditer(r'(?i)href=["\']([^"\']+)["\']', html_content):
+        url = match.group(1)
+        if "twitter.com" in url or "x.com" in url:
+            continue
+        if url.startswith(("/", "#")):
+            continue
+        return True
+    return False
 
 
 watcher = Watcher()
