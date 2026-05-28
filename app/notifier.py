@@ -25,19 +25,19 @@ def html_to_text(value: str) -> str:
     return text.strip()
 
 
-def split_rsshub_description(value: str) -> tuple[str, str, str, str]:
+def split_rsshub_description(value: str) -> tuple[str, str, str]:
     if not value:
-        return "", "", "", ""
+        return "", "", ""
     text = html.unescape(value)
     quote_pattern = re.compile(
         r'(?is)(?:<hr[^>]*>\s*)?<div[^>]*class=["\'][^"\']*rsshub-quote[^"\']*["\'][^>]*>(.*?)</div>\s*'
     )
     match = quote_pattern.search(text)
     if not match:
-        return html_to_text(text), "", "", text
+        return html_to_text(text), "", ""
     quote_html = match.group(1)
     outer_html = quote_pattern.sub("\n", text, count=1)
-    return html_to_text(outer_html), html_to_text(quote_html), quote_html, outer_html
+    return html_to_text(outer_html), html_to_text(quote_html), quote_html
 
 
 def clip_text(value: str, limit: int = 2800) -> str:
@@ -98,7 +98,6 @@ def format_feed_item(
     author_label: str = "",
     author_note: str = "",
     author_username: str = "",
-    author_nickname: str = "",
     translated_outer: str = "",
     translated_quote: str = "",
     is_retweet: bool = False,
@@ -113,45 +112,24 @@ def format_feed_item(
         quote_limit = 1700
 
     parts = []
-    
-    # 1. Author Header
-    author_line = ""
     if author_username:
-        name = f"{author_nickname} @{author_username}" if author_nickname else f"@{author_username}"
+        note_line = "<b>备注:</b>"
         if author_note:
-            author_line = f"<b>备注:</b>【{html.escape(author_note)}】\n<b>用户名:</b> {html.escape(name)}"
-        else:
-            author_line = f"<b>备注:</b>\n<b>用户名:</b> {html.escape(name)}"
+            note_line += f" <b>{html.escape(f'【{author_note}】')}</b>"
+        username = html.escape(author_username)
+        parts.append(f"{note_line}\n<b>用户名:</b> {username}")
     elif author_label:
-        author_line = html.escape(author_label)
-        
-    if author_line:
-        parts.append(author_line)
-        
-    # 2. Outer content (body / retweet)
-    outer_part = ""
+        parts.append(html.escape(author_label))
     if translated_outer:
         if is_retweet:
-            heading = f"转发自 {retweet_source}" if retweet_source else "转发"
-            outer_part = f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer, limit=outer_limit))}"
+            heading = f"转发自{retweet_source}" if retweet_source else "转发"
+            parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer, limit=outer_limit))}")
         else:
-            outer_part = html.escape(clip_text(translated_outer, limit=outer_limit))
-            
-    if outer_part:
-        if parts:
-            parts.append("")  # Blank line separator
-        parts.append(outer_part)
-        
-    # 3. Quote content
-    quote_part = ""
+            parts.append(html.escape(clip_text(translated_outer, limit=outer_limit)))
     if translated_quote:
-        heading = f"引用自 {quote_source}" if quote_source else "引用"
-        quote_part = f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote, limit=quote_limit))}"
-        
-    if quote_part:
         if parts:
-            parts.append("")  # Blank line separator
-        parts.append(quote_part)
-        
+            parts.append("")
+        heading = f"引用自{quote_source}" if quote_source else "引用"
+        parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote, limit=quote_limit))}")
     body = "\n".join(parts)
     return f"\u200b\n{body}" if body else body

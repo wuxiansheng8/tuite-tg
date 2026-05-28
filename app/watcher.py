@@ -11,7 +11,6 @@ from urllib.parse import quote, urljoin
 
 import feedparser
 import httpx
-import traceback
 from sqlalchemy.orm import Session
 
 from .database import (
@@ -30,7 +29,7 @@ from .notifier import format_alert, format_feed_item, send_apprise, send_telegra
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
-DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true&showAuthorInDesc=true"
+DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true"
 RSSHUB_FOLLOWING_ROUTE = "twitter/home_latest"
 
 
@@ -68,12 +67,8 @@ class Watcher:
                 async with self._lock:
                     await self.run_once()
             except Exception as exc:
-                traceback.print_exc()
-                err_msg = f"{type(exc).__name__}"
-                if str(exc):
-                    err_msg += f": {exc}"
                 with session_scope() as db:
-                    add_log(db, "ERROR", f"watcher 主循环异常: {err_msg}")
+                    add_log(db, "ERROR", f"watcher 主循环异常: {exc}")
             interval = read_int_setting("global_poll_seconds", 5)
             jitter = random.uniform(0.2, 1.5)
             try:
@@ -149,11 +144,7 @@ class Watcher:
             await self.process_items(source_snapshot, list_snapshot, items, bootstrap)
             await mark_binding_success(source_snapshot, list_snapshot, len(items))
         except Exception as exc:
-            traceback.print_exc()
-            err_msg = f"{type(exc).__name__}"
-            if str(exc):
-                err_msg += f": {exc}"
-            await self.handle_source_failure(source_snapshot, list_snapshot, err_msg)
+            await self.handle_source_failure(source_snapshot, list_snapshot, str(exc))
 
     async def process_items(
         self,
@@ -174,7 +165,6 @@ class Watcher:
             update_alias_last_spoke(username, item.get("published_at"))
             author_note = resolve_alias_note(username)
             author_label = format_plain_author_label(username, author_note)
-            author_nickname = item.get("author_name") or ""
             with session_scope() as db:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
@@ -192,44 +182,15 @@ class Watcher:
                     )
                     add_log(db, "INFO", f"首次启动记录历史推文，不推送: {item_id}")
                     continue
-                add_log(db, "INFO", f"发现新推文: {item_id} | 标题: {title[:200]} | 原始描述: {description[:1000]}")
+                add_log(db, "INFO", f"发现新推文: {item_id}")
 
-            outer_text, quote_text, quote_html, outer_html = split_rsshub_description(description)
-            retweet_source, outer_text = extract_retweet_source(outer_text, reposting_author=author_nickname)
+            outer_text, quote_text, quote_html = split_rsshub_description(description)
+            retweet_source, outer_text = extract_retweet_source(outer_text)
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
-            retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
-            retweet_usernames = dedupe_preserve_order(
-                retweet_usernames
-                + extract_usernames_from_entry_links(item.get("links"), "repost", exclude={username})
-                + extract_usernames_near_retweet_source(description, retweet_source, exclude={username})
-            )
-            # Prioritize retweet_source if it's a nickname (does not start with @), otherwise extract from HTML.
-            retweet_display_name = retweet_source if retweet_source and not retweet_source.startswith("@") else (extract_status_display_name(outer_html, retweet_usernames) or retweet_source)
-            retweet_label = resolve_source_label(
-                retweet_display_name,
-                linked_usernames=retweet_usernames,
-                main_author_username=username,
-                main_author_nickname=author_nickname
-            )
-            quote_linked_usernames = extract_status_usernames(quote_html, exclude={username}) if quote_html else []
-            quote_linked_usernames = dedupe_preserve_order(
-                quote_linked_usernames + extract_usernames_from_entry_links(item.get("links"), "quote", exclude={username})
-            )
-            # Prioritize quote_source if it's a nickname.
-            quote_display_name = quote_source if quote_source and not quote_source.startswith("@") else (extract_status_display_name(quote_html, quote_linked_usernames) or quote_source)
-            quote_label = resolve_source_label(
-                quote_display_name,
-                linked_usernames=quote_linked_usernames,
-                main_author_username=username,
-                main_author_nickname=author_nickname
-            )
-            with session_scope() as db:
-                add_log(
-                    db,
-                    "INFO",
-                    f"推文 {item_id} 解析结果: is_retweet={is_retweet}, retweet_source={retweet_source}, retweet_usernames={retweet_usernames}, retweet_label={retweet_label}, quote_source={quote_source}, quote_linked_usernames={quote_linked_usernames}, quote_label={quote_label}"
-                )
+            retweet_label = resolve_source_label(retweet_source)
+            quote_linked_usernames = extract_linked_usernames(quote_html, exclude={username}) if quote_html else []
+            quote_label = resolve_source_label(quote_source, quote_text, quote_linked_usernames)
             original_outer = outer_text or title
             translated_outer = await maybe_translate_title(original_outer)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
@@ -241,12 +202,10 @@ class Watcher:
                 if display_quote:
                     display_quote = resolve_mentions_in_text(db, display_quote)
 
-            author_nickname = item.get("author_name") or ""
             message = format_feed_item(
                 author_label=author_label,
                 author_note=author_note,
                 author_username=username,
-                author_nickname=author_nickname,
                 translated_outer=display_outer,
                 translated_quote=display_quote,
                 is_retweet=is_retweet,
@@ -259,8 +218,6 @@ class Watcher:
             if image_url:
                 disable_preview = False
                 message = f'<a href="{html.escape(image_url)}">&#8203;</a>' + message
-            elif has_external_link(description):
-                disable_preview = False
 
             try:
                 await send_telegram_with_retry(
@@ -290,12 +247,8 @@ class Watcher:
                     with session_scope() as db:
                         add_log(db, "INFO", f"Apprise 推送成功: {item_id}")
             except Exception as exc:
-                traceback.print_exc()
-                err_msg = f"{type(exc).__name__}"
-                if str(exc):
-                    err_msg += f": {exc}"
                 with session_scope() as db:
-                    add_log(db, "ERROR", f"推送失败 {item_id}: {err_msg}")
+                    add_log(db, "ERROR", f"推送失败 {item_id}: {exc}")
 
     async def handle_source_failure(self, token: dict, watch_list: dict, error: str) -> None:
         bot_token, chat_id, _ = read_notify_settings()
@@ -325,7 +278,6 @@ class Watcher:
 
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     route_params = read_text_setting("rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
-    route_params = ensure_rsshub_route_param(route_params, "showAuthorInDesc", "true")
     url = build_rsshub_home_url(token["rsshub_url"], route_params)
     retry_statuses = {502, 503, 504}
     last_resp: httpx.Response | None = None
@@ -365,9 +317,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "title": entry.get("title", ""),
                 "description": description,
                 "link": entry.get("link", ""),
-                "links": entry.get("links", []),
                 "username": extract_username_from_entry(entry),
-                "author_name": extract_display_name_from_entry(entry),
                 "published_at": parse_entry_datetime(entry),
             }
         )
@@ -415,12 +365,8 @@ async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
     try:
         await send_telegram_with_retry(bot_token, chat_id, message, "报警消息")
     except Exception as exc:
-        traceback.print_exc()
-        err_msg = f"{type(exc).__name__}"
-        if str(exc):
-            err_msg += f": {exc}"
         with session_scope() as db:
-            add_log(db, "ERROR", f"TG 报警发送失败: {err_msg}")
+            add_log(db, "ERROR", f"TG 报警发送失败: {exc}")
 
 
 async def send_telegram_with_retry(
@@ -449,11 +395,8 @@ async def send_telegram_with_retry(
             return
         except Exception as exc:
             last_error = exc
-            err_msg = f"{type(exc).__name__}"
-            if str(exc):
-                err_msg += f": {exc}"
             with session_scope() as db:
-                add_log(db, "ERROR", f"{label} 第 {attempt} 次发送失败: {err_msg}")
+                add_log(db, "ERROR", f"{label} 第 {attempt} 次发送失败: {exc}")
     if last_error:
         raise last_error
 
@@ -540,28 +483,14 @@ def is_retweet_text(value: str) -> bool:
     return value.strip().lower().startswith(("rt ", "rt\u2002", "转发 "))
 
 
-def extract_retweet_source(value: str, reposting_author: str = "") -> tuple[str, str]:
+def extract_retweet_source(value: str) -> tuple[str, str]:
     text = value.strip()
-    if reposting_author:
-        author = re.escape(re.sub(r"\s+", " ", reposting_author.strip()))
-        match = re.match(rf"(?is)^{author}[\s\u2002]+RT[\s\u2002]+(@?[^:\n：]{{1,80}})[:：][\s\u2002]*(.*)$", text)
-        if match:
-            return match.group(1).strip(), match.group(2).strip()
-        match = re.match(rf"(?is)^{author}[\s\u2002]+RT[\s\u2002]*\n+(@?[^:\n：]{{1,80}})[:：][\s\u2002]*(.*)$", text)
-        if match:
-            return match.group(1).strip(), match.group(2).strip()
-    match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})[:：]\s+(.*)$", text)
+    match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20}):?\s+(.*)$", text)
     if not match:
-        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})\s*\n+(.*)$", text)
-    if not match:
-        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})[:：]\s*(.*)$", text)
+        match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s*\n+(.*)$", text)
     if not match:
         return "", value
-    source = match.group(1).strip()
-    body = match.group(2).strip()
-    if source.startswith("@"):
-        return source, body
-    return source, body
+    return match.group(1), match.group(2).strip()
 
 
 def extract_quote_source(value: str) -> tuple[str, str]:
@@ -571,7 +500,7 @@ def extract_quote_source(value: str) -> tuple[str, str]:
     match = re.match(r"(?is)^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", text)
     if not match:
         return "", value
-    source = re.sub(r"\s+", " ", match.group(1)).strip()
+    source = re.sub(r"\s+", " ", match.group(1)).strip().lstrip("@")
     return source, match.group(2).strip()
 
 
@@ -591,15 +520,6 @@ def read_text_setting(key: str, default: str = "") -> str:
 
 def normalize_rsshub_route_params(value: str) -> str:
     return (value or "").strip().lstrip("/?")
-
-
-def ensure_rsshub_route_param(route_params: str, key: str, value: str) -> str:
-    clean_params = normalize_rsshub_route_params(route_params)
-    if re.search(rf"(?i)(^|&){re.escape(key)}=", clean_params):
-        return clean_params
-    if clean_params:
-        return f"{clean_params}&{key}={value}"
-    return f"{key}={value}"
 
 
 def build_rsshub_home_url(base_url: str, route_params: str = "") -> str:
@@ -708,207 +628,36 @@ def resolve_alias_note(username: str) -> str:
 
 def resolve_source_label(
     source: str,
+    body_text: str = "",
     linked_usernames: list[str] | None = None,
-    main_author_username: str = "",
-    main_author_nickname: str = "",
 ) -> str:
-    clean_source = source.strip()
-    if clean_source:
-        # Clean leading/trailing asterisks or spaces from display name/source
-        clean_source = re.sub(r"^[\s*]+|[\s*]+$", "", clean_source)
-
-    source_is_username = clean_source.startswith("@")
-    raw = clean_source.lstrip("@")
-    candidates = []
-    
-    # 1. If it starts with @, it's definitely a username candidate
-    if source_is_username:
-        candidates.append(raw)
-        
-    # 2. Extract any embedded @username in raw
+    raw = source.strip().lstrip("@")
+    if not raw:
+        return ""
+    candidates = [raw]
     username_in_raw = extract_username_from_text(raw)
     if username_in_raw:
         candidates.append(username_in_raw)
-        
-    # 3. Add all linked usernames extracted from HTML links
+    body_username = extract_username_from_text(body_text)
+    if body_username:
+        candidates.append(body_username)
     candidates.extend(linked_usernames or [])
-
-    # Deduplicate candidates preserving order
-    usernames = dedupe_preserve_order(candidates)
-
-    if (
-        main_author_username
-        and main_author_nickname
-        and compact_alias_key(raw) == compact_alias_key(main_author_nickname)
-    ):
-        usernames = dedupe_preserve_order([main_author_username] + usernames)
-    
-    target_username = next(iter(usernames), "")
-    
-    # Determine the nickname to display
-    nickname = ""
-    # If the source is not explicitly a username (doesn't start with @) and is different from target_username
-    if not source_is_username and raw:
-        nickname = raw
-
-    # If the resolved user is the main author, and we have the main author's nickname, use it as the nickname
-    if target_username and main_author_username and target_username.lower() == main_author_username.lower() and not nickname:
-        nickname = main_author_nickname
-        
-    # If nickname and username are practically the same (e.g. 'blocmates.' and 'blocmates'), clear the nickname
-    if nickname and target_username:
-        if compact_alias_key(nickname) == compact_alias_key(target_username):
-            nickname = ""
-            
-    note = ""
-    matched_username = ""
     with session_scope() as db:
-        for candidate in usernames:
-            n = find_alias_note(db, candidate)
-            if n:
-                note = n
-                matched_username = candidate
-                break
-                
-    user = matched_username if matched_username else target_username
-    if not user and source_is_username:
-        user = raw
-        
-    if note:
-        # If there is a remark, show remark + @username (omit nickname)
-        if user:
-            return f"【{note}】@{user}"
-        else:
-            return f"【{note}】{raw}"
-    else:
-        # If no remark, show nickname + @username
-        if nickname and user:
-            return f"{nickname} @{user}"
-        elif user:
-            return f"@{user}"
-        elif raw:
-            return raw
-        return ""
+        for candidate in dedupe_preserve_order(candidates):
+            note = find_alias_note(db, candidate)
+            if note:
+                return f"【{note}】 @{candidate}"
+    return f"@{raw}"
 
 
-def extract_retweet_usernames(
-    outer_html: str,
-    full_html: str,
-    exclude: set[str] | None = None,
-) -> list[str]:
-    candidates = extract_status_usernames(outer_html, exclude=exclude)
-    if candidates:
-        return candidates
-    text = html.unescape(full_html or "")
-    for match in re.finditer(r"(?is)<[^>]*>\s*(?:RT|转发)\s*</[^>]*>\s*(.{0,800})", text):
-        candidates = extract_status_usernames(match.group(1), exclude=exclude)
-        if candidates:
-            return candidates
-    return []
-
-
-def extract_usernames_near_retweet_source(
-    value: str,
-    source: str,
-    exclude: set[str] | None = None,
-) -> list[str]:
-    clean_source = re.sub(r"\s+", " ", (source or "").strip().lstrip("@"))
-    if not clean_source:
-        return []
-    text = html.unescape(value or "")
-    for match in re.finditer(r"(?is)<a\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", text):
-        label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", match.group(2)))).strip()
-        if compact_alias_key(label) != compact_alias_key(clean_source):
-            continue
-        usernames = extract_status_usernames(match.group(1), exclude=exclude)
-        if usernames:
-            return usernames
-    return []
-
-
-def extract_status_display_name(value: str, usernames: list[str]) -> str:
-    if not value or not usernames:
-        return ""
-    for match in re.finditer(r'(?is)<a\b([^>]*)>(.*?)</a>', value):
-        attrs = match.group(1)
-        content = match.group(2)
-        href_match = re.search(r'(?i)href=["\']([^"\']+)["\']', attrs)
-        if not href_match:
-            continue
-        href = href_match.group(1).lower()
-        for username in usernames:
-            u_lower = username.lower()
-            if re.search(r'\b' + re.escape(u_lower) + r'\b', href):
-                label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", content))).strip()
-                if label and not re.fullmatch(r"https?://\S+", label) and label.lower() != u_lower:
-                    clean_label = label.lstrip("@").strip()
-                    if clean_label.lower() != u_lower:
-                        return label
-    return ""
-
-
-def extract_status_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
+def extract_linked_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
     exclude = {normalize_username(item) for item in (exclude or set()) if item}
-    exclude.update({"i", "intent", "share", "hashtag", "search", "home", "explore", "notifications", "messages", "tos", "privacy", "status"})
     usernames: list[str] = []
-    
-    # 1. Match absolute/relative profile and status links in href attributes
-    for match in re.finditer(r'(?i)href\s*=\s*(?:["\']([^"\']+)["\']|([^>\s]+))', value):
-        url = match.group(1) or match.group(2) or ""
-        url = url.strip()
-        if not url:
-            continue
-            
-        screen_name_match = re.search(r'[?&]screen_name=([A-Za-z0-9_]{1,20})\b', url, re.I)
-        if screen_name_match:
-            username = normalize_username(screen_name_match.group(1))
-            if username and username not in exclude:
-                usernames.append(username)
-                
-        path = url
-        domain_match = re.match(r'^(?:https?:)?//(?:www\.)?(?:x|twitter)\.com(/.*)', url, re.I)
-        if domain_match:
-            path = domain_match.group(1)
-        elif url.startswith(('http://', 'https://', '//')):
-            continue
-            
-        path = path.split('?')[0].split('#')[0]
-        if path.startswith('/'):
-            path_segments = [s for s in path.split('/') if s]
-            if path_segments:
-                first_seg = path_segments[0]
-                if re.fullmatch(r'[A-Za-z0-9_]{1,20}', first_seg):
-                    username = normalize_username(first_seg)
-                    if username and username not in exclude:
-                        usernames.append(username)
-                        
-    # 2. Fallback to old regex
-    for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>/]+)", value, re.I):
+    for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>]+)/status/\d+", value, re.I):
         username = normalize_username(match.group(1))
-        if username and username not in exclude:
+        if username and username not in exclude and username not in {"i", "intent"}:
             usernames.append(username)
-            
     return dedupe_preserve_order(usernames)
-
-
-def extract_usernames_from_entry_links(
-    links: object,
-    rel: str,
-    exclude: set[str] | None = None,
-) -> list[str]:
-    if not isinstance(links, list):
-        return []
-    values = []
-    for item in links:
-        if not isinstance(item, dict):
-            continue
-        link_rel = str(item.get("rel") or item.get("type") or "").lower()
-        if link_rel != rel:
-            continue
-        href = str(item.get("href") or item.get("url") or "")
-        if href:
-            values.append(href)
-    return extract_status_usernames("\n".join(values), exclude=exclude)
 
 
 def dedupe_preserve_order(values: list[str]) -> list[str]:
@@ -961,10 +710,6 @@ def normalize_username(value: str) -> str:
     return value
 
 
-def is_valid_username(value: str) -> bool:
-    return bool(re.fullmatch(r"[A-Za-z0-9_]{1,20}", value.strip().lstrip("@")))
-
-
 def extract_username_from_entry(entry) -> str:
     for key in ("author", "authors"):
         value = entry.get(key)
@@ -985,23 +730,6 @@ def extract_username_from_entry(entry) -> str:
             "id": entry.get("id") or entry.get("guid") or "",
         }
     )
-
-
-def extract_display_name_from_entry(entry) -> str:
-    for key in ("author", "authors"):
-        value = entry.get(key)
-        if isinstance(value, str):
-            name = re.sub(r"\s*\(@[A-Za-z0-9_]{1,20}\)", "", value).strip()
-            if name:
-                return name
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    name_val = str(item.get("name") or "")
-                    name = re.sub(r"\s*\(@[A-Za-z0-9_]{1,20}\)", "", name_val).strip()
-                    if name:
-                        return name
-    return ""
 
 
 def extract_username_from_item(item: dict) -> str:
@@ -1115,19 +843,6 @@ def resolve_mentions_in_text(db: Session, text: str) -> str:
             return f"【{note}】 @{handle}"
         return match.group(0)
     return re.sub(r"@([A-Za-z0-9_]{1,20})\b", replace_mention, text)
-
-
-def has_external_link(html_content: str) -> bool:
-    if not html_content:
-        return False
-    for match in re.finditer(r'(?i)href=["\']([^"\']+)["\']', html_content):
-        url = match.group(1)
-        if "twitter.com" in url or "x.com" in url:
-            continue
-        if url.startswith(("/", "#")):
-            continue
-        return True
-    return False
 
 
 watcher = Watcher()
