@@ -741,31 +741,49 @@ def extract_retweet_usernames(
 def extract_status_display_name(value: str, usernames: list[str]) -> str:
     if not value or not usernames:
         return ""
-    for username in usernames:
-        pattern = (
-            r'(?is)<a\b[^>]*href=["\'](?:https?://)?(?:www\.)?(?:x|twitter)\.com/'
-            + re.escape(username)
-            + r'(?:/status/\d+)?(?:/|\?|["\'])[^"\']*["\'][^>]*>(.*?)</a>'
-        )
-        match = re.search(pattern, value)
-        if not match:
+    for match in re.finditer(r'(?is)<a\b([^>]*)>(.*?)</a>', value):
+        attrs = match.group(1)
+        content = match.group(2)
+        href_match = re.search(r'(?i)href=["\']([^"\']+)["\']', attrs)
+        if not href_match:
             continue
-        label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", match.group(1)))).strip()
-        if label and not re.fullmatch(r"https?://\S+", label) and label.lower() != username.lower():
-            clean_label = label.lstrip("@").strip()
-            if clean_label.lower() != username.lower():
-                return label
+        href = href_match.group(1).lower()
+        for username in usernames:
+            u_lower = username.lower()
+            if re.search(r'\b' + re.escape(u_lower) + r'\b', href):
+                label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", content))).strip()
+                if label and not re.fullmatch(r"https?://\S+", label) and label.lower() != u_lower:
+                    clean_label = label.lstrip("@").strip()
+                    if clean_label.lower() != u_lower:
+                        return label
     return ""
 
 
 def extract_status_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
     exclude = {normalize_username(item) for item in (exclude or set()) if item}
-    exclude.update({"i", "intent", "share", "hashtag", "search", "home", "explore", "notifications", "messages", "tos", "privacy"})
+    exclude.update({"i", "intent", "share", "hashtag", "search", "home", "explore", "notifications", "messages", "tos", "privacy", "status"})
     usernames: list[str] = []
+    
+    # 1. Match absolute/relative profile and status links
+    pattern1 = r'href=["\'](?:https?://(?:www\.)?(?:x|twitter)\.com)?/([A-Za-z0-9_]{1,20})(?:/status/\d+|/|\?|#|["\'])'
+    for match in re.finditer(pattern1, value, re.I):
+        username = normalize_username(match.group(1))
+        if username and username not in exclude:
+            usernames.append(username)
+            
+    # 2. Match intent query params screen_name=...
+    pattern2 = r'[?&]screen_name=([A-Za-z0-9_]{1,20})\b'
+    for match in re.finditer(pattern2, value, re.I):
+        username = normalize_username(match.group(1))
+        if username and username not in exclude:
+            usernames.append(username)
+            
+    # 3. Fallback to old regex
     for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>/]+)", value, re.I):
         username = normalize_username(match.group(1))
         if username and username not in exclude:
             usernames.append(username)
+            
     return dedupe_preserve_order(usernames)
 
 
