@@ -189,10 +189,12 @@ class Watcher:
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
-            retweet_label = resolve_source_label(retweet_source, linked_usernames=retweet_usernames)
+            retweet_display_name = retweet_source or extract_status_display_name(outer_html, retweet_usernames)
+            retweet_label = resolve_source_label(retweet_display_name, linked_usernames=retweet_usernames)
             quote_linked_usernames = extract_status_usernames(quote_html, exclude={username}) if quote_html else []
+            quote_display_name = quote_source or extract_status_display_name(quote_html, quote_linked_usernames)
             quote_label = resolve_source_label(
-                quote_source,
+                quote_display_name,
                 quote_linked_usernames,
             )
             original_outer = outer_text or title
@@ -644,16 +646,18 @@ def resolve_source_label(
     if username_in_raw:
         candidates.append(username_in_raw)
     candidates.extend(linked_usernames or [])
+    usernames = dedupe_preserve_order(candidates)
     with session_scope() as db:
-        for candidate in dedupe_preserve_order(candidates):
+        for candidate in usernames:
             note = find_alias_note(db, candidate)
             if note:
-                return f"【{note}】 @{candidate}"
-    fallback = next(iter(dedupe_preserve_order(candidates)), "")
-    if fallback:
-        return f"@{fallback}"
+                display_name = raw if raw and not source_is_username else f"@{candidate}"
+                return f"【{note}】 {display_name}"
+    fallback = next(iter(usernames), "")
     if raw:
         return f"@{raw}" if source_is_username and is_valid_username(raw) else raw
+    if fallback:
+        return f"@{fallback}"
     return ""
 
 
@@ -671,6 +675,24 @@ def extract_retweet_usernames(
         if candidates:
             return candidates
     return []
+
+
+def extract_status_display_name(value: str, usernames: list[str]) -> str:
+    if not value or not usernames:
+        return ""
+    for username in usernames:
+        pattern = (
+            r'(?is)<a\b[^>]*href=["\'][^"\']*(?:x|twitter)\.com/'
+            + re.escape(username)
+            + r'/status/\d+[^"\']*["\'][^>]*>(.*?)</a>'
+        )
+        match = re.search(pattern, value)
+        if not match:
+            continue
+        label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", match.group(1)))).strip()
+        if label and not re.fullmatch(r"https?://\S+", label) and label.lower() != username.lower():
+            return label
+    return ""
 
 
 def extract_status_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
