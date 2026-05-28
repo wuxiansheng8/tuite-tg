@@ -11,6 +11,7 @@ from urllib.parse import quote, urljoin
 
 import feedparser
 import httpx
+import traceback
 from sqlalchemy.orm import Session
 
 from .database import (
@@ -67,8 +68,12 @@ class Watcher:
                 async with self._lock:
                     await self.run_once()
             except Exception as exc:
+                traceback.print_exc()
+                err_msg = f"{type(exc).__name__}"
+                if str(exc):
+                    err_msg += f": {exc}"
                 with session_scope() as db:
-                    add_log(db, "ERROR", f"watcher 主循环异常: {exc}")
+                    add_log(db, "ERROR", f"watcher 主循环异常: {err_msg}")
             interval = read_int_setting("global_poll_seconds", 5)
             jitter = random.uniform(0.2, 1.5)
             try:
@@ -144,7 +149,11 @@ class Watcher:
             await self.process_items(source_snapshot, list_snapshot, items, bootstrap)
             await mark_binding_success(source_snapshot, list_snapshot, len(items))
         except Exception as exc:
-            await self.handle_source_failure(source_snapshot, list_snapshot, str(exc))
+            traceback.print_exc()
+            err_msg = f"{type(exc).__name__}"
+            if str(exc):
+                err_msg += f": {exc}"
+            await self.handle_source_failure(source_snapshot, list_snapshot, err_msg)
 
     async def process_items(
         self,
@@ -259,8 +268,12 @@ class Watcher:
                     with session_scope() as db:
                         add_log(db, "INFO", f"Apprise 推送成功: {item_id}")
             except Exception as exc:
+                traceback.print_exc()
+                err_msg = f"{type(exc).__name__}"
+                if str(exc):
+                    err_msg += f": {exc}"
                 with session_scope() as db:
-                    add_log(db, "ERROR", f"推送失败 {item_id}: {exc}")
+                    add_log(db, "ERROR", f"推送失败 {item_id}: {err_msg}")
 
     async def handle_source_failure(self, token: dict, watch_list: dict, error: str) -> None:
         bot_token, chat_id, _ = read_notify_settings()
@@ -378,8 +391,12 @@ async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
     try:
         await send_telegram_with_retry(bot_token, chat_id, message, "报警消息")
     except Exception as exc:
+        traceback.print_exc()
+        err_msg = f"{type(exc).__name__}"
+        if str(exc):
+            err_msg += f": {exc}"
         with session_scope() as db:
-            add_log(db, "ERROR", f"TG 报警发送失败: {exc}")
+            add_log(db, "ERROR", f"TG 报警发送失败: {err_msg}")
 
 
 async def send_telegram_with_retry(
@@ -408,8 +425,11 @@ async def send_telegram_with_retry(
             return
         except Exception as exc:
             last_error = exc
+            err_msg = f"{type(exc).__name__}"
+            if str(exc):
+                err_msg += f": {exc}"
             with session_scope() as db:
-                add_log(db, "ERROR", f"{label} 第 {attempt} 次发送失败: {exc}")
+                add_log(db, "ERROR", f"{label} 第 {attempt} 次发送失败: {err_msg}")
     if last_error:
         raise last_error
 
