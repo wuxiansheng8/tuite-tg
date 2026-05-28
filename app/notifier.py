@@ -113,28 +113,45 @@ def format_feed_item(
         quote_limit = 1700
 
     parts = []
+    
+    # 1. Author Header
+    author_line = ""
     if author_username:
+        name = f"{author_nickname} @{author_username}" if author_nickname else f"@{author_username}"
         if author_note:
-            name = author_nickname if author_nickname else f"@{author_username}"
-            author_line = f"<b>【{html.escape(author_note)}】 {html.escape(name)}</b>"
+            author_line = f"<b>备注:</b>【{html.escape(author_note)}】\n<b>用户名:</b> {html.escape(name)}"
         else:
-            if author_nickname:
-                author_line = f"<b>{html.escape(author_nickname)} @{html.escape(author_username)}</b>"
-            else:
-                author_line = f"<b>@{html.escape(author_username)}</b>"
-        parts.append(author_line)
+            author_line = f"<b>用户名:</b> {html.escape(name)}"
     elif author_label:
-        parts.append(html.escape(author_label))
+        author_line = html.escape(author_label)
+        
+    if author_line:
+        parts.append(author_line)
+        
+    # 2. Outer content (body / retweet)
+    outer_part = ""
     if translated_outer:
         if is_retweet:
             heading = f"转发自 {retweet_source}" if retweet_source else "转发"
-            parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer, limit=outer_limit))}")
+            outer_part = f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_outer, limit=outer_limit))}"
         else:
-            parts.append(html.escape(clip_text(translated_outer, limit=outer_limit)))
-    if translated_quote:
+            outer_part = html.escape(clip_text(translated_outer, limit=outer_limit))
+            
+    if outer_part:
         if parts:
-            parts.append("")
+            parts.append("")  # Blank line separator
+        parts.append(outer_part)
+        
+    # 3. Quote content
+    quote_part = ""
+    if translated_quote:
         heading = f"引用自 {quote_source}" if quote_source else "引用"
-        parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote, limit=quote_limit))}")
+        quote_part = f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote, limit=quote_limit))}"
+        
+    if quote_part:
+        if parts:
+            parts.append("")  # Blank line separator
+        parts.append(quote_part)
+        
     body = "\n".join(parts)
     return f"\u200b\n{body}" if body else body

@@ -701,22 +701,26 @@ def resolve_source_label(
                 matched_username = candidate
                 break
 
+    user = matched_username if matched_username else target_username
+    if not user and raw and source_is_username and is_valid_username(raw):
+        user = raw
+
     if note:
-        # 有备注的显示备注+昵称
-        if nickname:
+        # 有备注的显示备注 + 昵称 @用户名
+        if nickname and user:
+            return f"【{note}】 {nickname} @{user}"
+        elif nickname:
             return f"【{note}】 {nickname}"
-        elif matched_username:
-            return f"【{note}】 @{matched_username}"
-        elif target_username:
-            return f"【{note}】 @{target_username}"
+        elif user:
+            return f"【{note}】 @{user}"
         else:
             return f"【{note}】 {raw}"
     else:
-        # 没备注的显示昵称+用户名
-        if nickname and target_username:
-            return f"{nickname} @{target_username}"
-        elif target_username:
-            return f"@{target_username}"
+        # 没备注的显示昵称 @用户名
+        if nickname and user:
+            return f"{nickname} @{user}"
+        elif user:
+            return f"@{user}"
         elif raw:
             return f"@{raw}" if source_is_username and is_valid_username(raw) else raw
         return ""
