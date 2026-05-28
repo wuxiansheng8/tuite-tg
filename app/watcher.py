@@ -715,26 +715,7 @@ def resolve_source_label(
         
     # 3. Add all linked usernames extracted from HTML links
     candidates.extend(linked_usernames or [])
-    
-    has_linked_usernames = bool(linked_usernames)
-
-    # 4. If raw has no spaces, it is likely a username candidate itself.
-    # When RSSHub gives us real linked usernames, keep raw as a display name
-    # instead of guessing that display names such as "Ditto" are usernames.
-    if " " not in raw and not has_linked_usernames:
-        # Strip trailing dot/punctuation that might be present in display names (like 'blocmates.')
-        clean_raw_user = re.sub(r"[^A-Za-z0-9_]+", "", raw)
-        if clean_raw_user:
-            candidates.append(clean_raw_user)
-            
-    # 5. Look up in the database to see if raw (display name/nickname) matches any configured UserAlias note
-    compact_raw = compact_alias_key(raw)
-    if compact_raw:
-        with session_scope() as db:
-            for alias in db.query(UserAlias).all():
-                if compact_alias_key(alias.note) == compact_raw or compact_alias_key(alias.username) == compact_raw:
-                    candidates.append(alias.username)
-                    
+                     
     # Deduplicate candidates preserving order
     usernames = dedupe_preserve_order(candidates)
 
