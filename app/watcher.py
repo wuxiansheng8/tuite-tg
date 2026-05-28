@@ -706,15 +706,11 @@ def resolve_source_label(
         user = raw
 
     if note:
-        # 有备注的显示备注 + 昵称 @用户名
-        if nickname and user:
-            return f"【{note}】 {nickname} @{user}"
-        elif nickname:
-            return f"【{note}】 {nickname}"
-        elif user:
-            return f"【{note}】 @{user}"
+        # 有备注的显示备注 + @用户名 (不带昵称)
+        if user:
+            return f"【{note}】@{user}"
         else:
-            return f"【{note}】 {raw}"
+            return f"【{note}】{raw}"
     else:
         # 没备注的显示昵称 @用户名
         if nickname and user:
