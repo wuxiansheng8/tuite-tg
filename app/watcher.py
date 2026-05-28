@@ -189,10 +189,12 @@ class Watcher:
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
-            retweet_display_name = extract_status_display_name(outer_html, retweet_usernames) or retweet_source
+            # Prioritize retweet_source if it's a nickname (does not start with @), otherwise extract from HTML.
+            retweet_display_name = retweet_source if retweet_source and not retweet_source.startswith("@") else (extract_status_display_name(outer_html, retweet_usernames) or retweet_source)
             retweet_label = resolve_source_label(retweet_display_name, linked_usernames=retweet_usernames)
             quote_linked_usernames = extract_status_usernames(quote_html, exclude={username}) if quote_html else []
-            quote_display_name = extract_status_display_name(quote_html, quote_linked_usernames) or quote_source
+            # Prioritize quote_source if it's a nickname.
+            quote_display_name = quote_source if quote_source and not quote_source.startswith("@") else (extract_status_display_name(quote_html, quote_linked_usernames) or quote_source)
             quote_label = resolve_source_label(
                 quote_display_name,
                 quote_linked_usernames,
@@ -712,25 +714,28 @@ def extract_status_display_name(value: str, usernames: list[str]) -> str:
         return ""
     for username in usernames:
         pattern = (
-            r'(?is)<a\b[^>]*href=["\'][^"\']*(?:x|twitter)\.com/'
+            r'(?is)<a\b[^>]*href=["\'](?:https?://)?(?:www\.)?(?:x|twitter)\.com/'
             + re.escape(username)
-            + r'/status/\d+[^"\']*["\'][^>]*>(.*?)</a>'
+            + r'(?:/status/\d+)?(?:/|\?|["\'])[^"\']*["\'][^>]*>(.*?)</a>'
         )
         match = re.search(pattern, value)
         if not match:
             continue
         label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", match.group(1)))).strip()
         if label and not re.fullmatch(r"https?://\S+", label) and label.lower() != username.lower():
-            return label
+            clean_label = label.lstrip("@").strip()
+            if clean_label.lower() != username.lower():
+                return label
     return ""
 
 
 def extract_status_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
     exclude = {normalize_username(item) for item in (exclude or set()) if item}
+    exclude.update({"i", "intent", "share", "hashtag", "search", "home", "explore", "notifications", "messages", "tos", "privacy"})
     usernames: list[str] = []
-    for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>]+)/status/\d+", value, re.I):
+    for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>/]+)", value, re.I):
         username = normalize_username(match.group(1))
-        if username and username not in exclude and username not in {"i", "intent"}:
+        if username and username not in exclude:
             usernames.append(username)
     return dedupe_preserve_order(usernames)
 
