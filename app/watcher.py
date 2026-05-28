@@ -30,7 +30,7 @@ from .notifier import format_alert, format_feed_item, send_apprise, send_telegra
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
-DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true"
+DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true&showAuthorInDesc=true"
 RSSHUB_FOLLOWING_ROUTE = "twitter/home_latest"
 
 
@@ -323,6 +323,7 @@ class Watcher:
 
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     route_params = read_text_setting("rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
+    route_params = ensure_rsshub_route_param(route_params, "showAuthorInDesc", "true")
     url = build_rsshub_home_url(token["rsshub_url"], route_params)
     retry_statuses = {502, 503, 504}
     last_resp: httpx.Response | None = None
@@ -539,21 +540,18 @@ def is_retweet_text(value: str) -> bool:
 
 def extract_retweet_source(value: str) -> tuple[str, str]:
     text = value.strip()
-    match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+@?([^:\n：]{1,60})[:：]\s+(.*)$", text)
+    match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})[:：]\s+(.*)$", text)
     if not match:
-        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+@?([^:\n：]{1,60})\s*\n+(.*)$", text)
+        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})\s*\n+(.*)$", text)
     if not match:
-        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+@?([^:\n：]{1,60})[:：]\s*(.*)$", text)
+        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})[:：]\s*(.*)$", text)
     if not match:
         return "", value
     source = match.group(1).strip()
     body = match.group(2).strip()
     if source.startswith("@"):
         return source, body
-    elif is_valid_username(source):
-        return f"@{source}", body
-    else:
-        return source, body
+    return source, body
 
 
 def extract_quote_source(value: str) -> tuple[str, str]:
@@ -583,6 +581,15 @@ def read_text_setting(key: str, default: str = "") -> str:
 
 def normalize_rsshub_route_params(value: str) -> str:
     return (value or "").strip().lstrip("/?")
+
+
+def ensure_rsshub_route_param(route_params: str, key: str, value: str) -> str:
+    clean_params = normalize_rsshub_route_params(route_params)
+    if re.search(rf"(?i)(^|&){re.escape(key)}=", clean_params):
+        return clean_params
+    if clean_params:
+        return f"{clean_params}&{key}={value}"
+    return f"{key}={value}"
 
 
 def build_rsshub_home_url(base_url: str, route_params: str = "") -> str:
@@ -715,7 +722,7 @@ def resolve_source_label(
         
     # 3. Add all linked usernames extracted from HTML links
     candidates.extend(linked_usernames or [])
-                     
+
     # Deduplicate candidates preserving order
     usernames = dedupe_preserve_order(candidates)
 
@@ -770,9 +777,6 @@ def resolve_source_label(
         elif user:
             return f"@{user}"
         elif raw:
-            # Fallback to prefixing with @ if it looks like a username (no spaces)
-            if " " not in raw:
-                return f"@{raw.lstrip('@')}"
             return raw
         return ""
 
