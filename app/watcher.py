@@ -764,21 +764,37 @@ def extract_status_usernames(value: str, exclude: set[str] | None = None) -> lis
     exclude.update({"i", "intent", "share", "hashtag", "search", "home", "explore", "notifications", "messages", "tos", "privacy", "status"})
     usernames: list[str] = []
     
-    # 1. Match absolute/relative profile and status links
-    pattern1 = r'href=["\'](?:https?://(?:www\.)?(?:x|twitter)\.com)?/([A-Za-z0-9_]{1,20})(?:/status/\d+|/|\?|#|["\'])'
-    for match in re.finditer(pattern1, value, re.I):
-        username = normalize_username(match.group(1))
-        if username and username not in exclude:
-            usernames.append(username)
+    # 1. Match absolute/relative profile and status links in href attributes
+    for match in re.finditer(r'(?i)href\s*=\s*(?:["\']([^"\']+)["\']|([^>\s]+))', value):
+        url = match.group(1) or match.group(2) or ""
+        url = url.strip()
+        if not url:
+            continue
             
-    # 2. Match intent query params screen_name=...
-    pattern2 = r'[?&]screen_name=([A-Za-z0-9_]{1,20})\b'
-    for match in re.finditer(pattern2, value, re.I):
-        username = normalize_username(match.group(1))
-        if username and username not in exclude:
-            usernames.append(username)
+        screen_name_match = re.search(r'[?&]screen_name=([A-Za-z0-9_]{1,20})\b', url, re.I)
+        if screen_name_match:
+            username = normalize_username(screen_name_match.group(1))
+            if username and username not in exclude:
+                usernames.append(username)
+                
+        path = url
+        domain_match = re.match(r'^(?:https?:)?//(?:www\.)?(?:x|twitter)\.com(/.*)', url, re.I)
+        if domain_match:
+            path = domain_match.group(1)
+        elif url.startswith(('http://', 'https://', '//')):
+            continue
             
-    # 3. Fallback to old regex
+        path = path.split('?')[0].split('#')[0]
+        if path.startswith('/'):
+            path_segments = [s for s in path.split('/') if s]
+            if path_segments:
+                first_seg = path_segments[0]
+                if re.fullmatch(r'[A-Za-z0-9_]{1,20}', first_seg):
+                    username = normalize_username(first_seg)
+                    if username and username not in exclude:
+                        usernames.append(username)
+                        
+    # 2. Fallback to old regex
     for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>/]+)", value, re.I):
         username = normalize_username(match.group(1))
         if username and username not in exclude:
