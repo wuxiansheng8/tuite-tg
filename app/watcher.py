@@ -195,12 +195,14 @@ class Watcher:
                 add_log(db, "INFO", f"发现新推文: {item_id} | 标题: {title[:200]} | 原始描述: {description[:1000]}")
 
             outer_text, quote_text, quote_html, outer_html = split_rsshub_description(description)
-            retweet_source, outer_text = extract_retweet_source(outer_text)
+            retweet_source, outer_text = extract_retweet_source(outer_text, reposting_author=author_nickname)
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
             retweet_usernames = dedupe_preserve_order(
-                retweet_usernames + extract_usernames_from_entry_links(item.get("links"), "repost", exclude={username})
+                retweet_usernames
+                + extract_usernames_from_entry_links(item.get("links"), "repost", exclude={username})
+                + extract_usernames_near_retweet_source(description, retweet_source, exclude={username})
             )
             # Prioritize retweet_source if it's a nickname (does not start with @), otherwise extract from HTML.
             retweet_display_name = retweet_source if retweet_source and not retweet_source.startswith("@") else (extract_status_display_name(outer_html, retweet_usernames) or retweet_source)
@@ -538,8 +540,16 @@ def is_retweet_text(value: str) -> bool:
     return value.strip().lower().startswith(("rt ", "rt\u2002", "转发 "))
 
 
-def extract_retweet_source(value: str) -> tuple[str, str]:
+def extract_retweet_source(value: str, reposting_author: str = "") -> tuple[str, str]:
     text = value.strip()
+    if reposting_author:
+        author = re.escape(re.sub(r"\s+", " ", reposting_author.strip()))
+        match = re.match(rf"(?is)^{author}[\s\u2002]+RT[\s\u2002]+(@?[^:\n：]{{1,80}})[:：][\s\u2002]*(.*)$", text)
+        if match:
+            return match.group(1).strip(), match.group(2).strip()
+        match = re.match(rf"(?is)^{author}[\s\u2002]+RT[\s\u2002]*\n+(@?[^:\n：]{{1,80}})[:：][\s\u2002]*(.*)$", text)
+        if match:
+            return match.group(1).strip(), match.group(2).strip()
     match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})[:：]\s+(.*)$", text)
     if not match:
         match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+(@?[^:\n：]{1,60})\s*\n+(.*)$", text)
@@ -794,6 +804,25 @@ def extract_retweet_usernames(
         candidates = extract_status_usernames(match.group(1), exclude=exclude)
         if candidates:
             return candidates
+    return []
+
+
+def extract_usernames_near_retweet_source(
+    value: str,
+    source: str,
+    exclude: set[str] | None = None,
+) -> list[str]:
+    clean_source = re.sub(r"\s+", " ", (source or "").strip().lstrip("@"))
+    if not clean_source:
+        return []
+    text = html.unescape(value or "")
+    for match in re.finditer(r"(?is)<a\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", text):
+        label = re.sub(r"\s+", " ", html.unescape(re.sub(r"(?is)<[^>]+>", "", match.group(2)))).strip()
+        if compact_alias_key(label) != compact_alias_key(clean_source):
+            continue
+        usernames = extract_status_usernames(match.group(1), exclude=exclude)
+        if usernames:
+            return usernames
     return []
 
 
