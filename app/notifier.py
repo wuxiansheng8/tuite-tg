@@ -114,18 +114,15 @@ def format_feed_item(
 
     parts = []
     if author_username:
-        note_line = "<b>备注:</b>"
         if author_note:
-            note_line += f" <b>{html.escape(f'【{author_note}】')}</b>"
-            if author_nickname:
-                note_line += f" {html.escape(author_nickname)}"
-            username_line = f"<b>用户名:</b> {html.escape(author_username)}"
+            name = author_nickname if author_nickname else f"@{author_username}"
+            author_line = f"<b>【{html.escape(author_note)}】 {html.escape(name)}</b>"
         else:
             if author_nickname:
-                username_line = f"<b>用户名:</b> {html.escape(author_nickname)} @{html.escape(author_username)}"
+                author_line = f"<b>{html.escape(author_nickname)} @{html.escape(author_username)}</b>"
             else:
-                username_line = f"<b>用户名:</b> @{html.escape(author_username)}"
-        parts.append(f"{note_line}\n{username_line}")
+                author_line = f"<b>@{html.escape(author_username)}</b>"
+        parts.append(author_line)
     elif author_label:
         parts.append(html.escape(author_label))
     if translated_outer:

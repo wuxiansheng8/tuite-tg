@@ -498,12 +498,21 @@ def is_retweet_text(value: str) -> bool:
 
 def extract_retweet_source(value: str) -> tuple[str, str]:
     text = value.strip()
-    match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20}):?\s+(.*)$", text)
+    match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+@?([^:\n：]{1,60})[:：]\s+(.*)$", text)
     if not match:
-        match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s*\n+(.*)$", text)
+        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+@?([^:\n：]{1,60})\s*\n+(.*)$", text)
+    if not match:
+        match = re.match(r"(?is)^(?:RT|转发)[\s\u2002]+@?([^:\n：]{1,60})[:：]\s*(.*)$", text)
     if not match:
         return "", value
-    return f"@{match.group(1)}", match.group(2).strip()
+    source = match.group(1).strip()
+    body = match.group(2).strip()
+    if source.startswith("@"):
+        return source, body
+    elif is_valid_username(source):
+        return f"@{source}", body
+    else:
+        return source, body
 
 
 def extract_quote_source(value: str) -> tuple[str, str]:
