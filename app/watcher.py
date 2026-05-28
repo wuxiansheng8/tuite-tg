@@ -191,7 +191,7 @@ class Watcher:
                     )
                     add_log(db, "INFO", f"首次启动记录历史推文，不推送: {item_id}")
                     continue
-                add_log(db, "INFO", f"发现新推文: {item_id}")
+                add_log(db, "INFO", f"发现新推文: {item_id} | 标题: {title[:200]} | 原始描述: {description[:1000]}")
 
             outer_text, quote_text, quote_html, outer_html = split_rsshub_description(description)
             retweet_source, outer_text = extract_retweet_source(outer_text)
@@ -208,6 +208,12 @@ class Watcher:
                 quote_display_name,
                 quote_linked_usernames,
             )
+            with session_scope() as db:
+                add_log(
+                    db,
+                    "INFO",
+                    f"推文 {item_id} 解析结果: is_retweet={is_retweet}, retweet_source={retweet_source}, retweet_usernames={retweet_usernames}, retweet_label={retweet_label}, quote_source={quote_source}, quote_linked_usernames={quote_linked_usernames}, quote_label={quote_label}"
+                )
             original_outer = outer_text or title
             translated_outer = await maybe_translate_title(original_outer)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
