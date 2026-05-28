@@ -30,7 +30,7 @@ from .notifier import format_alert, format_feed_item, send_apprise, send_telegra
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
-DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true&showAuthorInDesc=true&readable=true"
+DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true&showAuthorInDesc=true"
 RSSHUB_FOLLOWING_ROUTE = "twitter/home_latest"
 
 
@@ -326,7 +326,6 @@ class Watcher:
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     route_params = read_text_setting("rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
     route_params = ensure_rsshub_route_param(route_params, "showAuthorInDesc", "true")
-    route_params = ensure_rsshub_route_param(route_params, "readable", "true")
     url = build_rsshub_home_url(token["rsshub_url"], route_params)
     retry_statuses = {502, 503, 504}
     last_resp: httpx.Response | None = None
