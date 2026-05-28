@@ -121,7 +121,7 @@ def format_feed_item(
         if author_note:
             author_line = f"<b>备注:</b>【{html.escape(author_note)}】\n<b>用户名:</b> {html.escape(name)}"
         else:
-            author_line = f"<b>用户名:</b> {html.escape(name)}"
+            author_line = f"<b>备注:</b>\n<b>用户名:</b> {html.escape(name)}"
     elif author_label:
         author_line = html.escape(author_label)
         
