@@ -30,7 +30,7 @@ from .notifier import format_alert, format_feed_item, send_apprise, send_telegra
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
-DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true&showAuthorInDesc=true"
+DEFAULT_RSSHUB_ROUTE_PARAMS = "count=100&includeRts=true&showQuotedInTitle=true"
 RSSHUB_FOLLOWING_ROUTE = "twitter/home_latest"
 
 
@@ -174,6 +174,7 @@ class Watcher:
             update_alias_last_spoke(username, item.get("published_at"))
             author_note = resolve_alias_note(username)
             author_label = format_plain_author_label(username, author_note)
+            author_nickname = item.get("author_name") or ""
             with session_scope() as db:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
@@ -200,13 +201,20 @@ class Watcher:
             retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
             # Prioritize retweet_source if it's a nickname (does not start with @), otherwise extract from HTML.
             retweet_display_name = retweet_source if retweet_source and not retweet_source.startswith("@") else (extract_status_display_name(outer_html, retweet_usernames) or retweet_source)
-            retweet_label = resolve_source_label(retweet_display_name, linked_usernames=retweet_usernames)
+            retweet_label = resolve_source_label(
+                retweet_display_name,
+                linked_usernames=retweet_usernames,
+                main_author_username=username,
+                main_author_nickname=author_nickname
+            )
             quote_linked_usernames = extract_status_usernames(quote_html, exclude={username}) if quote_html else []
             # Prioritize quote_source if it's a nickname.
             quote_display_name = quote_source if quote_source and not quote_source.startswith("@") else (extract_status_display_name(quote_html, quote_linked_usernames) or quote_source)
             quote_label = resolve_source_label(
                 quote_display_name,
-                quote_linked_usernames,
+                linked_usernames=quote_linked_usernames,
+                main_author_username=username,
+                main_author_nickname=author_nickname
             )
             with session_scope() as db:
                 add_log(
@@ -309,11 +317,6 @@ class Watcher:
 
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     route_params = read_text_setting("rsshub_route_params", DEFAULT_RSSHUB_ROUTE_PARAMS)
-    if "showAuthorInDesc=true" not in route_params:
-        if route_params:
-            route_params += "&showAuthorInDesc=true"
-        else:
-            route_params = "showAuthorInDesc=true"
     url = build_rsshub_home_url(token["rsshub_url"], route_params)
     retry_statuses = {502, 503, 504}
     last_resp: httpx.Response | None = None
@@ -682,6 +685,8 @@ def resolve_alias_note(username: str) -> str:
 def resolve_source_label(
     source: str,
     linked_usernames: list[str] | None = None,
+    main_author_username: str = "",
+    main_author_nickname: str = "",
 ) -> str:
     clean_source = source.strip()
     if not clean_source:
@@ -733,6 +738,10 @@ def resolve_source_label(
     # If the source is not explicitly a username (doesn't start with @) and is different from target_username
     if not source_is_username and raw:
         nickname = raw
+
+    # If the resolved user is the main author, and we have the main author's nickname, use it as the nickname
+    if target_username and main_author_username and target_username.lower() == main_author_username.lower() and not nickname:
+        nickname = main_author_nickname
         
     # If nickname and username are practically the same (e.g. 'blocmates.' and 'blocmates'), clear the nickname
     if nickname and target_username:
