@@ -25,19 +25,19 @@ def html_to_text(value: str) -> str:
     return text.strip()
 
 
-def split_rsshub_description(value: str) -> tuple[str, str, str]:
+def split_rsshub_description(value: str) -> tuple[str, str, str, str]:
     if not value:
-        return "", "", ""
+        return "", "", "", ""
     text = html.unescape(value)
     quote_pattern = re.compile(
         r'(?is)(?:<hr[^>]*>\s*)?<div[^>]*class=["\'][^"\']*rsshub-quote[^"\']*["\'][^>]*>(.*?)</div>\s*'
     )
     match = quote_pattern.search(text)
     if not match:
-        return html_to_text(text), "", ""
+        return html_to_text(text), "", "", text
     quote_html = match.group(1)
     outer_html = quote_pattern.sub("\n", text, count=1)
-    return html_to_text(outer_html), html_to_text(quote_html), quote_html
+    return html_to_text(outer_html), html_to_text(quote_html), quote_html, outer_html
 
 
 def clip_text(value: str, limit: int = 2800) -> str:
