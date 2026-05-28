@@ -199,6 +199,9 @@ class Watcher:
             quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_usernames = extract_retweet_usernames(outer_html, description, exclude={username})
+            retweet_usernames = dedupe_preserve_order(
+                retweet_usernames + extract_usernames_from_entry_links(item.get("links"), "repost", exclude={username})
+            )
             # Prioritize retweet_source if it's a nickname (does not start with @), otherwise extract from HTML.
             retweet_display_name = retweet_source if retweet_source and not retweet_source.startswith("@") else (extract_status_display_name(outer_html, retweet_usernames) or retweet_source)
             retweet_label = resolve_source_label(
@@ -208,6 +211,9 @@ class Watcher:
                 main_author_nickname=author_nickname
             )
             quote_linked_usernames = extract_status_usernames(quote_html, exclude={username}) if quote_html else []
+            quote_linked_usernames = dedupe_preserve_order(
+                quote_linked_usernames + extract_usernames_from_entry_links(item.get("links"), "quote", exclude={username})
+            )
             # Prioritize quote_source if it's a nickname.
             quote_display_name = quote_source if quote_source and not quote_source.startswith("@") else (extract_status_display_name(quote_html, quote_linked_usernames) or quote_source)
             quote_label = resolve_source_label(
@@ -356,6 +362,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "title": entry.get("title", ""),
                 "description": description,
                 "link": entry.get("link", ""),
+                "links": entry.get("links", []),
                 "username": extract_username_from_entry(entry),
                 "author_name": extract_display_name_from_entry(entry),
                 "published_at": parse_entry_datetime(entry),
@@ -689,13 +696,9 @@ def resolve_source_label(
     main_author_nickname: str = "",
 ) -> str:
     clean_source = source.strip()
-    if not clean_source:
-        return ""
-        
-    # Clean leading/trailing asterisks or spaces from display name/source
-    clean_source = re.sub(r"^[\s*]+|[\s*]+$", "", clean_source)
-    if not clean_source:
-        return ""
+    if clean_source:
+        # Clean leading/trailing asterisks or spaces from display name/source
+        clean_source = re.sub(r"^[\s*]+|[\s*]+$", "", clean_source)
 
     source_is_username = clean_source.startswith("@")
     raw = clean_source.lstrip("@")
@@ -730,6 +733,13 @@ def resolve_source_label(
                     
     # Deduplicate candidates preserving order
     usernames = dedupe_preserve_order(candidates)
+
+    if (
+        main_author_username
+        and main_author_nickname
+        and compact_alias_key(raw) == compact_alias_key(main_author_nickname)
+    ):
+        usernames = dedupe_preserve_order([main_author_username] + usernames)
     
     target_username = next(iter(usernames), "")
     
@@ -861,6 +871,26 @@ def extract_status_usernames(value: str, exclude: set[str] | None = None) -> lis
             usernames.append(username)
             
     return dedupe_preserve_order(usernames)
+
+
+def extract_usernames_from_entry_links(
+    links: object,
+    rel: str,
+    exclude: set[str] | None = None,
+) -> list[str]:
+    if not isinstance(links, list):
+        return []
+    values = []
+    for item in links:
+        if not isinstance(item, dict):
+            continue
+        link_rel = str(item.get("rel") or item.get("type") or "").lower()
+        if link_rel != rel:
+            continue
+        href = str(item.get("href") or item.get("url") or "")
+        if href:
+            values.append(href)
+    return extract_status_usernames("\n".join(values), exclude=exclude)
 
 
 def dedupe_preserve_order(values: list[str]) -> list[str]:
