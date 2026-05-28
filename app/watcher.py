@@ -684,24 +684,61 @@ def resolve_source_label(
     linked_usernames: list[str] | None = None,
 ) -> str:
     clean_source = source.strip()
+    if not clean_source:
+        return ""
+        
+    # Clean leading/trailing asterisks or spaces from display name/source
+    clean_source = re.sub(r"^[\s*]+|[\s*]+$", "", clean_source)
+    if not clean_source:
+        return ""
+
     source_is_username = clean_source.startswith("@")
     raw = clean_source.lstrip("@")
     candidates = []
-    if raw and source_is_username and is_valid_username(raw):
+    
+    # 1. If it starts with @, it's definitely a username candidate
+    if source_is_username:
         candidates.append(raw)
+        
+    # 2. Extract any embedded @username in raw
     username_in_raw = extract_username_from_text(raw)
     if username_in_raw:
         candidates.append(username_in_raw)
+        
+    # 3. Add all linked usernames extracted from HTML links
     candidates.extend(linked_usernames or [])
+    
+    # 4. If raw has no spaces, it is likely a username candidate itself
+    if " " not in raw:
+        # Strip trailing dot/punctuation that might be present in display names (like 'blocmates.')
+        clean_raw_user = re.sub(r"[^A-Za-z0-9_]+", "", raw)
+        if clean_raw_user:
+            candidates.append(clean_raw_user)
+            
+    # 5. Look up in the database to see if raw (display name/nickname) matches any configured UserAlias note
+    compact_raw = compact_alias_key(raw)
+    if compact_raw:
+        with session_scope() as db:
+            for alias in db.query(UserAlias).all():
+                if compact_alias_key(alias.note) == compact_raw or compact_alias_key(alias.username) == compact_raw:
+                    candidates.append(alias.username)
+                    
+    # Deduplicate candidates preserving order
     usernames = dedupe_preserve_order(candidates)
     
     target_username = next(iter(usernames), "")
     
-    # 确定显示用的昵称
+    # Determine the nickname to display
     nickname = ""
-    if raw and not source_is_username and raw.lower() != target_username.lower():
+    # If the source is not explicitly a username (doesn't start with @) and is different from target_username
+    if not source_is_username and raw:
         nickname = raw
-
+        
+    # If nickname and username are practically the same (e.g. 'blocmates.' and 'blocmates'), clear the nickname
+    if nickname and target_username:
+        if compact_alias_key(nickname) == compact_alias_key(target_username):
+            nickname = ""
+            
     note = ""
     matched_username = ""
     with session_scope() as db:
@@ -711,25 +748,28 @@ def resolve_source_label(
                 note = n
                 matched_username = candidate
                 break
-
+                
     user = matched_username if matched_username else target_username
-    if not user and raw and source_is_username and is_valid_username(raw):
+    if not user and source_is_username:
         user = raw
-
+        
     if note:
-        # 有备注的显示备注 + @用户名 (不带昵称)
+        # If there is a remark, show remark + @username (omit nickname)
         if user:
             return f"【{note}】@{user}"
         else:
             return f"【{note}】{raw}"
     else:
-        # 没备注的显示昵称 @用户名
+        # If no remark, show nickname + @username
         if nickname and user:
             return f"{nickname} @{user}"
         elif user:
             return f"@{user}"
         elif raw:
-            return f"@{raw}" if source_is_username and is_valid_username(raw) else raw
+            # Fallback to prefixing with @ if it looks like a username (no spaces)
+            if " " not in raw:
+                return f"@{raw.lstrip('@')}"
+            return raw
         return ""
 
 
