@@ -190,33 +190,24 @@ class Watcher:
                 )
 
             outer_text, quote_text, quote_html = split_rsshub_description(description)
-            retweet_source, outer_text = extract_retweet_source(outer_text)
             
-            author_nickname = ""
-            nickname_match = re.match(r"^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", outer_text, re.S)
-            if nickname_match:
-                nickname_cand = nickname_match.group(1).strip()
-                if nickname_cand.upper() not in {"RT", "转发"}:
-                    author_nickname = nickname_cand
-                    outer_text = nickname_match.group(2).strip()
+            # Parse outer tweet details
+            outer_info = parse_tweet_text(outer_text)
+            is_retweet = outer_info["is_retweet"] or is_retweet_text(outer_info["content"] or title)
+            author_nickname = outer_info["author_nickname"]
+            retweet_source = outer_info["retweet_source"]
+            outer_text = outer_info["content"]
             
             if not author_nickname:
                 author_nickname = item.get("author_name") or ""
+                
+            # Parse quote details if quote exists
+            quote_source = ""
+            if quote_text:
+                quote_info = parse_tweet_text(quote_text)
+                quote_source = quote_info["author_nickname"] or quote_info["retweet_source"]
+                quote_text = quote_info["content"]
 
-            quote_source, quote_text = extract_quote_source(quote_text)
-            
-            quote_nickname = ""
-            quote_nickname_match = re.match(r"^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", quote_text, re.S)
-            if quote_nickname_match:
-                quote_nickname_cand = quote_nickname_match.group(1).strip()
-                if quote_nickname_cand.upper() not in {"RT", "转发"}:
-                    quote_nickname = quote_nickname_cand
-                    quote_text = quote_nickname_match.group(2).strip()
-            
-            if quote_nickname:
-                quote_source = quote_nickname
-
-            is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_label = resolve_source_label(retweet_source)
             quote_linked_usernames = extract_linked_usernames(quote_html, exclude={username}) if quote_html else []
             quote_label = resolve_source_label(quote_source, quote_text, quote_linked_usernames)
@@ -675,9 +666,16 @@ def resolve_source_label(
     candidates.extend(linked_usernames or [])
     with session_scope() as db:
         for candidate in dedupe_preserve_order(candidates):
-            note = find_alias_note(db, candidate)
-            if note:
-                return f"【{note}】 @{candidate}"
+            alias = db.query(UserAlias).filter(UserAlias.username == candidate).first()
+            if not alias:
+                compact = compact_alias_key(candidate)
+                if compact:
+                    for item in db.query(UserAlias).all():
+                        if compact_alias_key(item.username) == compact:
+                            alias = item
+                            break
+            if alias:
+                return f"【{alias.note}】 @{alias.username}"
     if is_valid_username(raw):
         return f"@{raw}"
     return raw
@@ -766,6 +764,57 @@ def extract_nickname_and_clean_text(outer_text: str) -> tuple[str, str]:
         if nickname.upper() not in {"RT", "转发"}:
             return nickname, cleaned_text
     return "", outer_text
+
+
+def parse_tweet_text(text: str) -> dict:
+    text = text.strip()
+    rt_prefix_match = re.match(
+        r"^([^:\n：]+?)[\s\u2002]+(?:RT|转发)[\s\u2002]*\n+([^:\n：]{1,60})[:：][\s\u2002]*(.*)$",
+        text,
+        re.S | re.I
+    )
+    if rt_prefix_match:
+        return {
+            "is_retweet": True,
+            "author_nickname": rt_prefix_match.group(1).strip(),
+            "retweet_source": rt_prefix_match.group(2).strip(),
+            "content": rt_prefix_match.group(3).strip()
+        }
+
+    rt_match = re.match(
+        r"^(?:RT|转发)[\s\u2002]+([^:\n：]{1,60})[:：][\s\u2002]*(.*)$",
+        text,
+        re.S | re.I
+    )
+    if rt_match:
+        return {
+            "is_retweet": True,
+            "author_nickname": "",
+            "retweet_source": rt_match.group(1).strip(),
+            "content": rt_match.group(2).strip()
+        }
+
+    normal_match = re.match(
+        r"^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$",
+        text,
+        re.S
+    )
+    if normal_match:
+        nickname = normal_match.group(1).strip()
+        if nickname.upper() not in {"RT", "转发"}:
+            return {
+                "is_retweet": False,
+                "author_nickname": nickname,
+                "retweet_source": "",
+                "content": normal_match.group(2).strip()
+            }
+
+    return {
+        "is_retweet": False,
+        "author_nickname": "",
+        "retweet_source": "",
+        "content": text
+    }
 
 
 def extract_display_name_from_entry(entry) -> str:
