@@ -675,7 +675,22 @@ def resolve_source_label(
                             alias = item
                             break
             if alias:
-                return f"【{alias.note}】 @{alias.username}"
+                return f"【{alias.note}】@{alias.username}"
+                
+    target_username = ""
+    for cand in dedupe_preserve_order(candidates):
+        if is_valid_username(cand):
+            target_username = cand
+            break
+            
+    if target_username:
+        if raw.lower() != target_username.lower():
+            if target_username.lower() in raw.lower():
+                return f"@{target_username}"
+            return f"{raw} @{target_username}"
+        else:
+            return f"@{target_username}"
+            
     if is_valid_username(raw):
         return f"@{raw}"
     return raw
