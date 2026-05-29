@@ -182,7 +182,11 @@ class Watcher:
                     )
                     add_log(db, "INFO", f"首次启动记录历史推文，不推送: {item_id}")
                     continue
-                add_log(db, "INFO", f"发现新推文: {item_id}")
+                add_log(
+                    db,
+                    "INFO",
+                    f"发现新推文: {item_id} | 标题: {title[:200]} | 链接: {link} | 用户名: {username} | 作者: {item.get('author_name') or ''} | 原始描述: {description[:1200]}"
+                )
 
             outer_text, quote_text, quote_html = split_rsshub_description(description)
             retweet_source, outer_text = extract_retweet_source(outer_text)
