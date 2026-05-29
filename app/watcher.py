@@ -162,9 +162,10 @@ class Watcher:
             description = item.get("description", "")
             link = item.get("link", "")
             username = normalize_username(str(item.get("username") or extract_username_from_item(item)))
+            username_case = extract_case_username(link, username)
             update_alias_last_spoke(username, item.get("published_at"))
             author_note = resolve_alias_note(username)
-            author_label = format_plain_author_label(username, author_note)
+            author_label = format_plain_author_label(username_case, author_note)
             with session_scope() as db:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
@@ -190,7 +191,31 @@ class Watcher:
 
             outer_text, quote_text, quote_html = split_rsshub_description(description)
             retweet_source, outer_text = extract_retweet_source(outer_text)
+            
+            author_nickname = ""
+            nickname_match = re.match(r"^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", outer_text, re.S)
+            if nickname_match:
+                nickname_cand = nickname_match.group(1).strip()
+                if nickname_cand.upper() not in {"RT", "转发"}:
+                    author_nickname = nickname_cand
+                    outer_text = nickname_match.group(2).strip()
+            
+            if not author_nickname:
+                author_nickname = item.get("author_name") or ""
+
             quote_source, quote_text = extract_quote_source(quote_text)
+            
+            quote_nickname = ""
+            quote_nickname_match = re.match(r"^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", quote_text, re.S)
+            if quote_nickname_match:
+                quote_nickname_cand = quote_nickname_match.group(1).strip()
+                if quote_nickname_cand.upper() not in {"RT", "转发"}:
+                    quote_nickname = quote_nickname_cand
+                    quote_text = quote_nickname_match.group(2).strip()
+            
+            if quote_nickname:
+                quote_source = quote_nickname
+
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             retweet_label = resolve_source_label(retweet_source)
             quote_linked_usernames = extract_linked_usernames(quote_html, exclude={username}) if quote_html else []
@@ -209,7 +234,8 @@ class Watcher:
             message = format_feed_item(
                 author_label=author_label,
                 author_note=author_note,
-                author_username=username,
+                author_username=username_case,
+                author_nickname=author_nickname,
                 translated_outer=display_outer,
                 translated_quote=display_quote,
                 is_retweet=is_retweet,
@@ -322,6 +348,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "description": description,
                 "link": entry.get("link", ""),
                 "username": extract_username_from_entry(entry),
+                "author_name": extract_display_name_from_entry(entry),
                 "published_at": parse_entry_datetime(entry),
             }
         )
@@ -651,7 +678,9 @@ def resolve_source_label(
             note = find_alias_note(db, candidate)
             if note:
                 return f"【{note}】 @{candidate}"
-    return f"@{raw}"
+    if is_valid_username(raw):
+        return f"@{raw}"
+    return raw
 
 
 def extract_linked_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
@@ -712,6 +741,48 @@ def update_alias_last_spoke(username: str, spoke_at: object) -> None:
 def normalize_username(value: str) -> str:
     value = value.strip().removeprefix("@").lower()
     return value
+
+
+def is_valid_username(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9_]{1,20}", value.strip().lstrip("@")))
+
+
+def extract_case_username(link: str, fallback_username: str) -> str:
+    if not link:
+        return fallback_username
+    match = re.search(r"(?:x|twitter)\.com/([^/?#]+)/status/\d+", link, re.I)
+    if match and match.group(1).lower() not in {"i", "intent"}:
+        return match.group(1).strip()
+    return fallback_username
+
+
+def extract_nickname_and_clean_text(outer_text: str) -> tuple[str, str]:
+    if not outer_text:
+        return "", ""
+    match = re.match(r"^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", outer_text, re.S)
+    if match:
+        nickname = match.group(1).strip()
+        cleaned_text = match.group(2).strip()
+        if nickname.upper() not in {"RT", "转发"}:
+            return nickname, cleaned_text
+    return "", outer_text
+
+
+def extract_display_name_from_entry(entry) -> str:
+    for key in ("author", "authors"):
+        value = entry.get(key)
+        if isinstance(value, str):
+            name = re.sub(r"\s*\(@[A-Za-z0-9_]{1,20}\)", "", value).strip()
+            if name:
+                return name
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    name_val = str(item.get("name") or "")
+                    name = re.sub(r"\s*\(@[A-Za-z0-9_]{1,20}\)", "", name_val).strip()
+                    if name:
+                        return name
+    return ""
 
 
 def extract_username_from_entry(entry) -> str:

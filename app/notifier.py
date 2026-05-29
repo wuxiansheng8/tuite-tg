@@ -98,6 +98,7 @@ def format_feed_item(
     author_label: str = "",
     author_note: str = "",
     author_username: str = "",
+    author_nickname: str = "",
     translated_outer: str = "",
     translated_quote: str = "",
     is_retweet: bool = False,
@@ -113,11 +114,15 @@ def format_feed_item(
 
     parts = []
     if author_username:
-        note_line = "<b>备注:</b>"
+        if author_nickname:
+            name_display = f"<b>{html.escape(author_nickname)}</b> (@{html.escape(author_username)})"
+        else:
+            name_display = f"@{html.escape(author_username)}"
+        
         if author_note:
-            note_line += f" <b>{html.escape(f'【{author_note}】')}</b>"
-        username = html.escape(author_username)
-        parts.append(f"{note_line}\n<b>用户名:</b> {username}")
+            parts.append(f"👤 {name_display}\n<b>备注:</b> 【{html.escape(author_note)}】")
+        else:
+            parts.append(f"👤 {name_display}")
     elif author_label:
         parts.append(html.escape(author_label))
     if translated_outer:
