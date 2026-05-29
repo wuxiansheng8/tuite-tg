@@ -698,10 +698,12 @@ def resolve_source_label(
 
 def extract_linked_usernames(value: str, exclude: set[str] | None = None) -> list[str]:
     exclude = {normalize_username(item) for item in (exclude or set()) if item}
+    ignored = {"i", "intent", "share", "hashtag", "search", "home", "explore", "notifications", "messages", "tos", "privacy", "status", "personalization"}
+    exclude.update(ignored)
     usernames: list[str] = []
-    for match in re.finditer(r"(?:x|twitter)\.com/([^/?#\"'>]+)/status/\d+", value, re.I):
+    for match in re.finditer(r"(?i)(?:x|twitter)\.com/([A-Za-z0-9_]{1,30})", value):
         username = normalize_username(match.group(1))
-        if username and username not in exclude and username not in {"i", "intent"}:
+        if username and username not in exclude:
             usernames.append(username)
     return dedupe_preserve_order(usernames)
 
