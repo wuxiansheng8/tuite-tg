@@ -65,10 +65,61 @@ async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
         )
     if resp.status_code >= 400:
         raise OpenAIRequestError(f"翻译请求失败: {resp.status_code} {resp.text[:300]}")
-    body = resp.json()
-    output_text = str(
-        (((body.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
-    ).strip()
+    
+    response_text = resp.text.strip()
+    content_type = resp.headers.get("content-type", "")
+    
+    if "text/event-stream" in content_type or response_text.startswith("data:"):
+        if not response_text.startswith("data:"):
+            try:
+                import json
+                data = json.loads(response_text)
+                if "error" in data:
+                    error_msg = data.get("error", {}).get("message") or "未知接口错误"
+                    raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
+            except OpenAIRequestError:
+                raise
+            except Exception:
+                pass
+
+        full_content = []
+        for line in response_text.splitlines():
+            line = line.strip()
+            if not line.startswith("data:") or line == "data: [DONE]":
+                continue
+            try:
+                import json
+                chunk = json.loads(line[5:].strip())
+                if "error" in chunk:
+                    error_msg = chunk.get("error", {}).get("message")
+                    if error_msg:
+                        raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
+                choices = chunk.get("choices")
+                if choices:
+                    delta = choices[0].get("delta", {})
+                    if delta:
+                        delta_content = delta.get("content", "")
+                        if delta_content:
+                            full_content.append(delta_content)
+            except OpenAIRequestError:
+                raise
+            except Exception:
+                continue
+        output_text = "".join(full_content).strip()
+    else:
+        try:
+            body = resp.json()
+        except Exception as exc:
+            raise OpenAIRequestError(f"无法解析返回的 JSON 数据: {exc} | 原始返回: {resp.text[:200]}")
+            
+        if "error" in body:
+            error_msg = body.get("error", {}).get("message") or "未知接口错误"
+            raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
+            
+        output_text = str(
+            (((body.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
+        ).strip()
+        
     if output_text:
         return output_text
     raise OpenAIRequestError("翻译请求成功，但没有返回文本结果")
