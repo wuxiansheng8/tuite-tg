@@ -451,10 +451,6 @@
               }
             }
 
-            // Trigger log watch in background
-            if (typeof watchLogs === "function") {
-              watchLogs();
-            }
           } else {
             targets.forEach(el => {
               const testMsg = el.querySelector(".test-message");
@@ -476,6 +472,12 @@
         } finally {
           button.textContent = originalBtnText;
           button.disabled = false;
+          // Defer logs sync and background panel refresh to let the browser repaint first!
+          setTimeout(() => {
+            if (typeof watchLogs === "function") {
+              watchLogs();
+            }
+          }, 50);
         }
       });
 
