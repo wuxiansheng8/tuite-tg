@@ -684,10 +684,9 @@ def resolve_source_label(
             break
             
     if target_username:
-        if raw.lower() != target_username.lower():
-            if target_username.lower() in raw.lower():
-                return f"@{target_username}"
-            return f"{raw} @{target_username}"
+        clean_raw = re.sub(r"\s*\(@?[A-Za-z0-9_]{1,20}\)", "", raw).strip()
+        if clean_raw.lower() != target_username.lower():
+            return f"{clean_raw} @{target_username}"
         else:
             return f"@{target_username}"
             
