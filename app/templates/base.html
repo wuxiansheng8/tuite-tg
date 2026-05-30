@@ -362,19 +362,18 @@
           return;
         }
 
+        // Prevent reload IMMEDIATELY so that even if subsequent JS errors occur, the page never reloads.
+        event.preventDefault();
+        event.stopPropagation();
+
         // If the button or form requires confirmation
         const confirmForm = button.closest("form[data-confirm]");
         if (confirmForm) {
           const confirmMsg = confirmForm.dataset.confirm || "确认执行这个操作吗？";
           if (!window.confirm(confirmMsg)) {
-            event.preventDefault();
-            event.stopPropagation();
             return;
           }
         }
-
-        event.preventDefault();
-        event.stopPropagation();
 
         // 1. Determine loading state for the submit button
         const originalBtnText = button.textContent;
@@ -411,8 +410,8 @@
           }
         }
 
-        // Set target result elements to loading text/state
-        const targets = targetKeys.map(key => document.querySelector(`[data-refresh-key="${CSS.escape(key)}"]`)).filter(Boolean);
+        // Find target elements safely without using CSS.escape
+        const targets = targetKeys.map(key => document.querySelector('[data-refresh-key="' + key + '"]')).filter(Boolean);
         targets.forEach(el => {
           const testMsg = el.querySelector(".test-message");
           if (testMsg) {
@@ -440,7 +439,7 @@
             if (targets.length > 0) {
               targetKeys.forEach((key, index) => {
                 const targetEl = targets[index];
-                const freshEl = doc.querySelector(`[data-refresh-key="${CSS.escape(key)}"]`);
+                const freshEl = doc.querySelector('[data-refresh-key="' + key + '"]');
                 if (targetEl && freshEl) {
                   targetEl.innerHTML = freshEl.innerHTML;
                 }
