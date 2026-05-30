@@ -445,15 +445,15 @@
                 }
               });
             } else {
-              // If no specific targets, refresh everything in active panel
+              // If no specific targets, refresh everything in active panel in background
               if (typeof refreshActivePanels === "function") {
-                await refreshActivePanels();
+                refreshActivePanels();
               }
             }
 
-            // Trigger log watch immediately
+            // Trigger log watch in background
             if (typeof watchLogs === "function") {
-              await watchLogs();
+              watchLogs();
             }
           } else {
             targets.forEach(el => {
