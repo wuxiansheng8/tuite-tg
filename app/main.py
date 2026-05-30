@@ -434,6 +434,7 @@ async def test_telegram(
 ):
     bot_token = get_setting(db, "telegram_bot_token", "")
     chat_id = get_setting(db, "telegram_chat_id", "")
+    db.commit()
     try:
         await send_telegram(bot_token, chat_id, format_alert("Tuite TG", "Telegram 测试消息发送成功。"))
         add_log(db, "INFO", "Telegram 测试消息发送成功")
@@ -449,6 +450,7 @@ async def test_translation_primary(
 ):
     try:
         endpoint = load_translation_endpoint(db, "primary")
+        db.commit()
         translated = await translate_text(endpoint, "OpenAI helps us translate tweets into Chinese.")
         set_setting(db, "translate_primary_test_result", translated[:500])
         set_setting(db, "translate_active_slot", "primary")
@@ -466,6 +468,7 @@ async def test_translation_backup(
 ):
     try:
         endpoint = load_translation_endpoint(db, "backup")
+        db.commit()
         translated = await translate_text(endpoint, "OpenAI helps us translate tweets into Chinese.")
         set_setting(db, "translate_backup_test_result", translated[:500])
         add_log(db, "INFO", f"备用翻译测试成功: {translated[:200]}")
@@ -481,6 +484,7 @@ async def test_translation_auto(
     _: str = Depends(current_user_from_cookie),
 ):
     try:
+        db.commit()
         translated, slot = await translate_via_failover(
             "OpenAI helps us translate tweets into Chinese.",
             prefer_active=True,
@@ -500,6 +504,7 @@ async def check_translation_balance_primary(
 ):
     try:
         endpoint = load_translation_endpoint(db, "primary")
+        db.commit()
         summary = await query_recent_costs(endpoint)
         set_setting(db, "translate_primary_balance_result", summary[:500])
         add_log(db, "INFO", f"主用余额查询成功: {summary}")
@@ -516,6 +521,7 @@ async def check_translation_balance_backup(
 ):
     try:
         endpoint = load_translation_endpoint(db, "backup")
+        db.commit()
         summary = await query_recent_costs(endpoint)
         set_setting(db, "translate_backup_balance_result", summary[:500])
         add_log(db, "INFO", f"备用余额查询成功: {summary}")
