@@ -1460,10 +1460,12 @@ def resolve_proxy_choice(db: Session, value: str) -> str | None:
 
 def load_translation_endpoint(db: Session, slot: str = "primary"):
     suffix = "primary" if slot == "primary" else "backup"
+    model = get_setting(db, f"translate_model_{suffix}", "") or "gpt-4.1-mini"
+    base_url = get_setting(db, f"translate_base_url_{suffix}", "") or "https://api.openai.com/v1"
     return build_endpoint(
         get_setting(db, f"translate_api_key_{suffix}", ""),
-        get_setting(db, f"translate_model_{suffix}", "gpt-4.1-mini"),
-        get_setting(db, f"translate_base_url_{suffix}", "https://api.openai.com/v1"),
+        model,
+        base_url,
     )
 
 

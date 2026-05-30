@@ -441,14 +441,14 @@ async def translate_via_failover(text: str, prefer_active: bool = False) -> tupl
         last_primary_probe_at = parse_datetime(get_setting(db, "translate_last_primary_probe_at", ""))
         primary = {
             "api_key": get_setting(db, "translate_api_key_primary", ""),
-            "model": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
-            "base_url": get_setting(db, "translate_base_url_primary", "https://api.openai.com/v1"),
+            "model": get_setting(db, "translate_model_primary", "") or "gpt-4.1-mini",
+            "base_url": get_setting(db, "translate_base_url_primary", "") or "https://api.openai.com/v1",
             "slot": "primary",
         }
         backup = {
             "api_key": get_setting(db, "translate_api_key_backup", ""),
-            "model": get_setting(db, "translate_model_backup", ""),
-            "base_url": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
+            "model": get_setting(db, "translate_model_backup", "") or "gpt-4.1-mini",
+            "base_url": get_setting(db, "translate_base_url_backup", "") or "https://api.openai.com/v1",
             "slot": "backup",
         }
     slots = [primary, backup]
