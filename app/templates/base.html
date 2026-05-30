@@ -347,10 +347,14 @@
         }
       }
 
-      document.addEventListener("submit", async function (event) {
-        const form = event.target;
-        const submitter = event.submitter || document.activeElement?.closest("button") || form.querySelector("button[type='submit']");
-        const action = submitter?.getAttribute("formaction") || form.getAttribute("action");
+      document.addEventListener("click", async function (event) {
+        const button = event.target.closest("button[type='submit'], input[type='submit']");
+        if (!button) {
+          return;
+        }
+
+        const form = button.form;
+        const action = button.getAttribute("formaction") || form?.getAttribute("action");
 
         if (!action) return;
         const isAjaxAction = action.includes("/test") || action.includes("/check") || action.includes("/refresh") || action.includes("/discover");
@@ -358,24 +362,33 @@
           return;
         }
 
+        // If the button or form requires confirmation
+        const confirmForm = button.closest("form[data-confirm]");
+        if (confirmForm) {
+          const confirmMsg = confirmForm.dataset.confirm || "确认执行这个操作吗？";
+          if (!window.confirm(confirmMsg)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+        }
+
         event.preventDefault();
+        event.stopPropagation();
 
         // 1. Determine loading state for the submit button
-        const btn = submitter || form.querySelector("button[type='submit']");
-        const originalBtnText = btn ? btn.textContent : "";
-        if (btn) {
-          btn.dataset.originalText = originalBtnText;
-          let loadingText = "请求中...";
-          if (action.includes("test")) {
-            loadingText = "测试中...";
-          } else if (action.includes("check") || action.includes("balance")) {
-            loadingText = "查询中...";
-          } else if (action.includes("refresh")) {
-            loadingText = "刷新中...";
-          }
-          btn.textContent = loadingText;
-          btn.disabled = true;
+        const originalBtnText = button.textContent;
+        button.dataset.originalText = originalBtnText;
+        let loadingText = "请求中...";
+        if (action.includes("test")) {
+          loadingText = "测试中...";
+        } else if (action.includes("check") || action.includes("balance")) {
+          loadingText = "查询中...";
+        } else if (action.includes("refresh")) {
+          loadingText = "刷新中...";
         }
+        button.textContent = loadingText;
+        button.disabled = true;
 
         // 2. Determine target refresh keys
         let targetKeys = [];
@@ -391,9 +404,11 @@
           targetKeys = ["translate-backup-balance"];
         } else {
           // Fallback to row/container elements inside the row/card or the form itself
-          const container = form.closest(".rsshub-row, .proxy-row, .row, .token-card") || form;
-          const refreshEls = container.querySelectorAll("[data-refresh-key]");
-          targetKeys = Array.from(refreshEls).map(el => el.dataset.refreshKey);
+          const container = button.closest(".rsshub-row, .proxy-row, .row, .token-card") || form;
+          if (container) {
+            const refreshEls = container.querySelectorAll("[data-refresh-key]");
+            targetKeys = Array.from(refreshEls).map(el => el.dataset.refreshKey);
+          }
         }
 
         // Set target result elements to loading text/state
@@ -407,9 +422,9 @@
         });
 
         try {
-          const body = new FormData(form);
-          if (submitter && submitter.name) {
-            body.append(submitter.name, submitter.value);
+          const body = form ? new FormData(form) : new FormData();
+          if (button.name) {
+            body.append(button.name, button.value);
           }
 
           const response = await fetch(action, {
@@ -460,10 +475,8 @@
             }
           });
         } finally {
-          if (btn) {
-            btn.textContent = originalBtnText;
-            btn.disabled = false;
-          }
+          button.textContent = originalBtnText;
+          button.disabled = false;
         }
       });
 
