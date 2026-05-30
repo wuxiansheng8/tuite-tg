@@ -543,31 +543,31 @@
       <button type="submit" class="secondary" formaction="/settings/check-translation-balance-primary">查主用余额</button>
       <button type="submit" class="secondary" formaction="/settings/check-translation-balance-backup">查备用余额</button>
     </div>
-    <div class="rsshub-test span-2">
+    <div class="rsshub-test span-2" data-refresh-key="translate-primary-test">
       <span>主用翻译测试结果</span>
       <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_primary_test_result or '') else 'ok-text' }}">
         {{ settings.translate_primary_test_result or '暂无结果' }}
       </b>
     </div>
-    <div class="rsshub-test span-2">
+    <div class="rsshub-test span-2" data-refresh-key="translate-backup-test">
       <span>备用翻译测试结果</span>
       <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_backup_test_result or '') else 'ok-text' }}">
         {{ settings.translate_backup_test_result or '暂无结果' }}
       </b>
     </div>
-    <div class="rsshub-test span-2">
+    <div class="rsshub-test span-2" data-refresh-key="translate-auto-test">
       <span>自动切换测试结果</span>
       <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_auto_test_result or '') else 'ok-text' }}">
         {{ settings.translate_auto_test_result or '暂无结果' }}
       </b>
     </div>
-    <div class="rsshub-test">
+    <div class="rsshub-test" data-refresh-key="translate-primary-balance">
       <span>主用余额查询结果</span>
       <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_primary_balance_result or '') else 'ok-text' }}">
         {{ settings.translate_primary_balance_result or '暂无结果' }}
       </b>
     </div>
-    <div class="rsshub-test">
+    <div class="rsshub-test" data-refresh-key="translate-backup-balance">
       <span>备用余额查询结果</span>
       <b class="test-message {{ 'warn-text' if ('失败' in (settings.translate_backup_balance_result or '') and '暂不支持' not in (settings.translate_backup_balance_result or '')) else 'ok-text' }}">
         {{ settings.translate_backup_balance_result or '暂无结果' }}
