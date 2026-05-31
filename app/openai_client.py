@@ -64,6 +64,26 @@ async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
             json=payload,
         )
     if resp.status_code >= 400:
+        error_msg = None
+        try:
+            body = resp.json()
+            if isinstance(body, dict):
+                if "error" in body:
+                    error_obj = body.get("error")
+                    if isinstance(error_obj, dict):
+                        error_msg = error_obj.get("message")
+                    else:
+                        error_msg = str(error_obj)
+                elif "message" in body:
+                    error_msg = str(body.get("message"))
+                elif "msg" in body:
+                    error_msg = str(body.get("msg"))
+                elif "detail" in body:
+                    error_msg = str(body.get("detail"))
+        except Exception:
+            pass
+        if error_msg:
+            raise OpenAIRequestError(f"翻译请求失败 (HTTP {resp.status_code}): {error_msg}")
         raise OpenAIRequestError(f"翻译请求失败: {resp.status_code} {resp.text[:300]}")
     
     response_text = resp.text.strip()
@@ -74,9 +94,19 @@ async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
             try:
                 import json
                 data = json.loads(response_text)
-                if "error" in data:
-                    error_msg = data.get("error", {}).get("message") or "未知接口错误"
-                    raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
+                if isinstance(data, dict):
+                    error_msg = None
+                    if "error" in data:
+                        error_obj = data.get("error")
+                        error_msg = error_obj.get("message") if isinstance(error_obj, dict) else str(error_obj)
+                    elif "message" in data:
+                        error_msg = str(data.get("message"))
+                    elif "msg" in data:
+                        error_msg = str(data.get("msg"))
+                    elif "detail" in data:
+                        error_msg = str(data.get("detail"))
+                    if error_msg:
+                        raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
             except OpenAIRequestError:
                 raise
             except Exception:
@@ -90,17 +120,19 @@ async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
             try:
                 import json
                 chunk = json.loads(line[5:].strip())
-                if "error" in chunk:
-                    error_msg = chunk.get("error", {}).get("message")
-                    if error_msg:
-                        raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
-                choices = chunk.get("choices")
-                if choices:
-                    delta = choices[0].get("delta", {})
-                    if delta:
-                        delta_content = delta.get("content", "")
-                        if delta_content:
-                            full_content.append(delta_content)
+                if isinstance(chunk, dict):
+                    if "error" in chunk:
+                        error_obj = chunk.get("error")
+                        error_msg = error_obj.get("message") if isinstance(error_obj, dict) else str(error_obj)
+                        if error_msg:
+                            raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
+                    choices = chunk.get("choices")
+                    if choices:
+                        delta = choices[0].get("delta", {})
+                        if delta:
+                            delta_content = delta.get("content", "")
+                            if delta_content:
+                                full_content.append(delta_content)
             except OpenAIRequestError:
                 raise
             except Exception:
@@ -112,9 +144,17 @@ async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
         except Exception as exc:
             raise OpenAIRequestError(f"无法解析返回的 JSON 数据: {exc} | 原始返回: {resp.text[:200]}")
             
-        if "error" in body:
-            error_msg = body.get("error", {}).get("message") or "未知接口错误"
-            raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg}")
+        if isinstance(body, dict):
+            if "error" in body:
+                error_obj = body.get("error")
+                error_msg = error_obj.get("message") if isinstance(error_obj, dict) else str(error_obj)
+                raise OpenAIRequestError(f"翻译请求失败 (API报错): {error_msg or '未知接口错误'}")
+            if "message" in body and not body.get("choices"):
+                raise OpenAIRequestError(f"翻译请求失败 (API报错): {body.get('message')}")
+            if "msg" in body and not body.get("choices"):
+                raise OpenAIRequestError(f"翻译请求失败 (API报错): {body.get('msg')}")
+            if "detail" in body and not body.get("choices"):
+                raise OpenAIRequestError(f"翻译请求失败 (API报错): {body.get('detail')}")
             
         output_text = str(
             (((body.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
@@ -122,7 +162,7 @@ async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:
         
     if output_text:
         return output_text
-    raise OpenAIRequestError("翻译请求成功，但没有返回文本结果")
+    raise OpenAIRequestError(f"翻译请求成功，但没有返回文本结果。API响应: {resp.text[:300]}")
 
 
 async def query_recent_costs(endpoint: OpenAIEndpoint, days: int = 30) -> str:
